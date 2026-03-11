@@ -71,6 +71,8 @@ When a Process Node is selected, the following parameters can be configured:
 - **Yield:** Percentage of good units produced (e.g., 95%).
 - **Number of Resources:** Parallel machines or workers at this step (multiplier for capacity).
 
+**Canonical Parameter Set:** Name, Cycle Time, Available Time, Yield, Number of Resources. (Agents must use these exact terms to refer to Process Node properties).
+
 **System Time Unit:**
 All calculations must use **hours as the internal base unit**.
 Inputs like cycle time, demand period, and available time should be converted to hours internally.
