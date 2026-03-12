@@ -124,7 +124,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 6: Deterministic Calculation Engine
+## Step 6: Deterministic Calculation Engine (Completed)
 **Goal:** Implement the V1 math as pure logic, independent from the UI.
 
 **What will be built:**
@@ -150,7 +150,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 7: Calculation Tests
+## Step 7: Calculation Tests (Completed)
 **Goal:** Prove the core math before wiring it deeply into the interface.
 
 **What will be built:**
