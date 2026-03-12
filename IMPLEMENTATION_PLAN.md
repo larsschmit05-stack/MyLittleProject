@@ -9,7 +9,7 @@ The plan is intentionally strict:
 - V1 supports **deterministic calculations only**
 - V1 excludes simulation, optimization, scheduling, and branching workflows
 
-## Step 1: Project Foundation
+## Step 1: Project Foundation (Completed)
 **Goal:** Create the minimum app structure needed to build the editor and dashboard.
 
 **What will be built:**
