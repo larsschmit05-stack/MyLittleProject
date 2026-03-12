@@ -110,7 +110,8 @@ const useFlowStore = create<FlowStore>((set, get) => ({
 
   onNodesChange: (changes) => {
     const currentState = get();
-    const nextNodes = applyNodeChanges(changes, currentState.nodes) as FlowNode[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nextNodes = applyNodeChanges(changes, currentState.nodes as any) as FlowNode[];
 
     set({
       nodes: nextNodes,

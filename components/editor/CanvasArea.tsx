@@ -97,18 +97,6 @@ function FlowCanvas() {
         y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1],
       };
 
-      const nodeData =
-        nodeType === 'process'
-          ? {
-              name: 'Process',
-              cycleTime: 60,
-              availableTime: 480,
-              yield: 100,
-              numberOfResources: 1,
-              conversionRatio: 1,
-            }
-          : { label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1) };
-
       const nodeId = `${nodeType}-${Date.now()}`;
       let newNode: FlowNode;
 
@@ -117,21 +105,21 @@ function FlowCanvas() {
           id: nodeId,
           type: 'process',
           position: snappedPosition,
-          data: nodeData,
+          data: { name: 'Process', cycleTime: 60, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1 },
         };
       } else if (nodeType === 'source') {
         newNode = {
           id: nodeId,
           type: 'source',
           position: snappedPosition,
-          data: nodeData,
+          data: { label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1) },
         };
       } else if (nodeType === 'sink') {
         newNode = {
           id: nodeId,
           type: 'sink',
           position: snappedPosition,
-          data: nodeData,
+          data: { label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1) },
         };
       } else {
         return;

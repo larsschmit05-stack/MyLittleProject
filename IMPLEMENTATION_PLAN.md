@@ -74,7 +74,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 4: Flow State And Domain Model
+## Step 4: Flow State And Domain Model (Completed)
 **Goal:** Establish a centralized, typesafe Zustand store as the single source of truth for the flow model, using the canonical V1 parameters and graph constraints defined in the PRD.
 
 **What will be built:**

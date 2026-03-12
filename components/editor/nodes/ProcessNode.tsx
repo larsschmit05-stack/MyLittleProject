@@ -1,8 +1,9 @@
 'use client';
 
 import { Handle, Position, NodeProps } from 'reactflow';
+import type { ProcessNodeData } from '../../../types/flow';
 
-export default function ProcessNode({ data, selected }: NodeProps<{ label: string }>) {
+export default function ProcessNode({ data, selected }: NodeProps<ProcessNodeData>) {
   return (
     <div
       style={{
@@ -30,7 +31,7 @@ export default function ProcessNode({ data, selected }: NodeProps<{ label: strin
       >
         Process
       </div>
-      <div>{data.label}</div>
+      <div>{data.name}</div>
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
     </div>
