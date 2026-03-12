@@ -50,7 +50,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 3: Graph Constraints
+## Step 3: Graph Constraints (Completed)
 **Goal:** Enforce the V1 graph rules before calculation logic is added.
 
 **What will be built:**
@@ -75,29 +75,31 @@ The plan is intentionally strict:
 ---
 
 ## Step 4: Flow State And Domain Model
-**Goal:** Define the app state and data model using the exact V1 terms from the PRD.
+**Goal:** Establish a centralized, typesafe Zustand store as the single source of truth for the flow model, using the canonical V1 parameters and graph constraints defined in the PRD.
 
 **What will be built:**
-- Zustand store for:
-  - nodes
-  - edges
-  - selected element
-  - global demand input
-  - derived calculation results
-- TypeScript types for Process node configuration:
-  - Name
-  - Cycle Time
-  - Available Time
-  - Yield
-  - Number of Resources
-  - Conversion Ratio
-- Demand state tied to the Sink output material.
-- A stable serialized model shape suitable for later save/load.
+1. **Domain Types (`/types/flow.ts`):**
+    - `ProcessNodeData`: `name`, `cycleTime`, `availableTime`, `yield`, `numberOfResources`, `conversionRatio`.
+    - `SourceNodeData` and `SinkNodeData`.
+    - `FlowModel` interface: `{ nodes: Node[], edges: Edge[], globalDemand: number }`.
+2. **Zustand Store (`/store/useFlowStore.ts`):**
+    - State: `nodes`, `edges`, `globalDemand`, and `selectedNodeId`.
+    - Actions: `onNodesChange`, `onEdgesChange`, `onConnect`, `updateNodeData(nodeId, data)`, `setGlobalDemand(demand)`, `selectNode(nodeId)`.
+3. **Migration of `CanvasArea.tsx`:**
+    - Replace `useNodesState` and `useEdgesState` with store selectors and actions.
+4. **Serialization:**
+    - `getSerializedModel()` action for clean JSON output.
 
 **Success Criteria:**
-- All V1 process parameters are represented in app state.
+- The editor's visual state is synchronized with a global Zustand store.
+- Selecting a node in the canvas updates `selectedNodeId` in the store.
 - Conversion Ratio is stored on the Process node, not on edges.
 - The model can be represented in a single consistent JSON shape.
+
+**Risks:**
+- **State Sync Conflicts:** Ensure standard `applyNodeChanges` and `applyEdgeChanges` are used to avoid infinite loops.
+- **Initial Data Defaults:** Initialize `yield` at 100 and `conversionRatio` at 1 to prevent calculation errors.
+- **Edge Data Drift:** Strictly forbid conversion logic on edges.
 
 ---
 
