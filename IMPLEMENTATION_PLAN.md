@@ -103,7 +103,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 5: Configuration Panel
+## Step 5: Configuration Panel (Completed)
 **Goal:** Let the user enter the minimum data required for deterministic capacity analysis.
 
 **What will be built:**
