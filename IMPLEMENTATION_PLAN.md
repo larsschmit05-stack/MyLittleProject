@@ -30,7 +30,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 2: Canvas And Node Rendering
+## Step 2: Canvas And Node Rendering (Completed)
 **Goal:** Make the visual flow builder usable at a basic level.
 
 **What will be built:**
