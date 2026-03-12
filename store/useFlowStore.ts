@@ -106,7 +106,7 @@ const useFlowStore = create<FlowStore>((set, get) => ({
   edges: [],
   selectedElement: null,
   globalDemand: 0,
-  derivedResults: {},
+  derivedResults: null,
 
   onNodesChange: (changes) => {
     const currentState = get();

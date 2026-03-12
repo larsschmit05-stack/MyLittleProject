@@ -1,4 +1,4 @@
-import { Node } from 'reactflow';
+import type { Node } from 'reactflow';
 
 export interface SourceNodeData {
   label: string;
@@ -28,8 +28,19 @@ export type SelectedElement =
   | { kind: 'edge'; id: string }
   | null;
 
-// Placeholder shape — populated in later steps
-export type DerivedResults = Record<string, Record<string, never>>;
+export interface NodeResult {
+  requiredThroughput: number;
+  effectiveCapacity: number;
+  utilization: number;
+}
+
+export interface FlowResult {
+  systemThroughput: number;
+  bottleneckNodeId: string | null;
+  nodeResults: Record<string, NodeResult>;
+}
+
+export type DerivedResults = FlowResult | null;
 
 export type SerializedNode =
   | {
