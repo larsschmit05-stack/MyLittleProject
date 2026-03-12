@@ -7,7 +7,9 @@ export default function SourceNode({ data, selected }: NodeProps<{ label: string
     <div
       style={{
         background: 'var(--color-bg-primary)',
-        border: `2px solid ${selected ? 'var(--color-action)' : 'var(--color-border)'}`,
+        border: selected
+          ? '2px solid var(--color-action)'
+          : '1px solid var(--color-border)',
         borderRadius: '8px',
         padding: '10px 14px',
         minWidth: '120px',

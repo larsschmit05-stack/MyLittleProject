@@ -50,11 +50,15 @@ function FlowCanvas() {
         x: event.clientX,
         y: event.clientY,
       });
+      const snappedPosition = {
+        x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0],
+        y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1],
+      };
 
       const newNode = {
         id: `${nodeType}-${Date.now()}`,
         type: nodeType,
-        position,
+        position: snappedPosition,
         data: { label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1) },
       };
 
@@ -63,22 +67,8 @@ function FlowCanvas() {
     [screenToFlowPosition, setNodes]
   );
 
-  const onKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        setNodes((nds) => nds.filter((n) => !n.selected));
-        setEdges((eds) => eds.filter((e) => !e.selected));
-      }
-    },
-    [setNodes, setEdges]
-  );
-
   return (
-    <div
-      style={{ width: '100%', height: '100%' }}
-      onKeyDown={onKeyDown}
-      tabIndex={0}
-    >
+    <div style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -91,6 +81,9 @@ function FlowCanvas() {
         snapToGrid
         snapGrid={SNAP_GRID}
         fitView
+        deleteKeyCode={['Delete', 'Backspace']}
+        autoPanOnNodeDrag={false}
+        autoPanOnConnect={false}
       >
         <Background
           variant={BackgroundVariant.Dots}
