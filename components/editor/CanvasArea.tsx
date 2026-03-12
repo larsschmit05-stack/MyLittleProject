@@ -1,11 +1,12 @@
 'use client';
 
 import 'reactflow/dist/style.css';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
   Controls,
+  Panel,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -16,6 +17,7 @@ import ReactFlow, {
 import SourceNode from './nodes/SourceNode';
 import ProcessNode from './nodes/ProcessNode';
 import SinkNode from './nodes/SinkNode';
+import { isValidConnection as checkConnection, validateGraph } from './validation';
 
 const nodeTypes = {
   source: SourceNode,
@@ -31,9 +33,24 @@ function FlowCanvas() {
   const { screenToFlowPosition } = useReactFlow();
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges]
+    (connection: Connection) => {
+      setEdges((currentEdges) => {
+        if (!checkConnection(connection, nodes, currentEdges)) {
+          return currentEdges;
+        }
+
+        return addEdge(connection, currentEdges);
+      });
+    },
+    [nodes, setEdges]
   );
+
+  const handleIsValidConnection = useCallback(
+    (connection: Connection) => checkConnection(connection, nodes, edges),
+    [nodes, edges]
+  );
+
+  const graphStatus = useMemo(() => validateGraph(nodes, edges), [nodes, edges]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -84,6 +101,7 @@ function FlowCanvas() {
         deleteKeyCode={['Delete', 'Backspace']}
         autoPanOnNodeDrag={false}
         autoPanOnConnect={false}
+        isValidConnection={handleIsValidConnection}
       >
         <Background
           variant={BackgroundVariant.Dots}
@@ -92,6 +110,26 @@ function FlowCanvas() {
           color="#e5e7eb"
         />
         <Controls />
+        <Panel position="bottom-left">
+          <div
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              background: graphStatus.isValid ? 'var(--color-healthy)' : 'var(--color-bg-primary)',
+              border: '1px solid',
+              borderColor: graphStatus.isValid ? 'var(--color-healthy)' : 'var(--color-border)',
+              color: graphStatus.isValid ? '#fff' : 'var(--color-text-secondary)',
+              maxWidth: '240px',
+            }}
+          >
+            {nodes.length === 0
+              ? 'Drag nodes onto the canvas to begin'
+              : graphStatus.isValid
+                ? 'Valid model'
+                : graphStatus.errors[0]}
+          </div>
+        </Panel>
       </ReactFlow>
     </div>
   );
