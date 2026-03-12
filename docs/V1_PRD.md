@@ -133,7 +133,17 @@ This minimum normalized capacity is the bottleneck-limited maximum achievable th
 - Financial/cost modeling.
 - ERP/API integrations.
 
-## 14. Success Criteria for V1
+## 14. UI/UX Design Direction
+The tool follows a "Data-First, Interface-Second" philosophy to ensure clarity and professional trust. For full details, refer to `docs/UI_STYLE_GUIDE.md`.
+
+*   **Visual Style:** Modern, clean, and technical SaaS aesthetic (inspired by Stripe). Avoids "legacy enterprise" clutter.
+*   **Color Palette:** White and light gray backgrounds with Indigo (`#6366F1`) as the primary action color.
+*   **Status Indicators:** Color-coded utilization (Green < 80%, Amber 80-100%, Red > 100% for bottlenecks).
+*   **Typography:** Clean sans-serif (Inter) with monospace (JetBrains Mono) for numerical data.
+*   **Components:** Rounded corners (8px), subtle shadows, and a strict 8px spacing grid.
+*   **Canvas Experience:** Light dot-grid background, smooth node connections, and instant visual feedback on parameter changes.
+
+## 15. Success Criteria for V1
 - A developer can build the UI and calculation engine without ambiguity.
 - The system accurately calculates node utilizations and identifies the correct bottleneck in a multi-step process with varying yields and material conversions.
 - The UI is responsive and updates calculations instantly upon parameter changes.
