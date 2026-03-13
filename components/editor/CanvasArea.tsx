@@ -74,7 +74,7 @@ function FlowCanvas() {
           color="#e5e7eb"
         />
         <Controls />
-        <Panel position="bottom-left">
+        <Panel position="bottom-center">
           <div
             style={{
               padding: '6px 10px',

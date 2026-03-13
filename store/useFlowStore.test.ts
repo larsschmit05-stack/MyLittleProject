@@ -1,6 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import useFlowStore from './useFlowStore';
-import type { FlowNode } from '../types/flow';
+import type { FlowNode, SerializedModel } from '../types/flow';
+
+// ─── Persistence mocks ────────────────────────────────────────────────────────
+
+const mockFetchModel = vi.fn();
+vi.mock('../lib/persistence', () => ({
+  insertModel: vi.fn(),
+  updateModel: vi.fn(),
+  fetchModel: (...args: unknown[]) => mockFetchModel(...args),
+  listModels: vi.fn(),
+  renameModel: vi.fn(),
+  deleteModel: vi.fn(),
+}));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +35,10 @@ const BASELINE_INITIAL = {
     { id: 'baseline', name: 'Baseline', model: { nodes: [], edges: [], globalDemand: 0 } },
   ],
   activeScenarioId: 'baseline',
+  savedModelId: null as string | null,
+  savedModelName: '',
+  isSaving: false,
+  saveError: null as string | null,
 };
 
 beforeEach(() => {
@@ -140,5 +156,91 @@ describe('deleteScenario', () => {
     expect(activeScenarioId).toBe('baseline');
     // Canvas should reflect the Baseline model (demand = 42)
     expect(globalDemand).toBe(42);
+  });
+});
+
+// ─── resetStore ───────────────────────────────────────────────────────────────
+
+describe('resetStore', () => {
+  it('clears canvas and persistence state back to initial', () => {
+    // Dirty the store
+    useFlowStore.getState().addNode({ id: 'n1', type: 'source', position: { x: 0, y: 0 }, data: { label: 'S' } });
+    useFlowStore.setState({ savedModelId: 'some-id', savedModelName: 'My Model', globalDemand: 99 });
+
+    useFlowStore.getState().resetStore();
+
+    const s = useFlowStore.getState();
+    expect(s.nodes).toHaveLength(0);
+    expect(s.globalDemand).toBe(0);
+    expect(s.savedModelId).toBeNull();
+    expect(s.savedModelName).toBe('');
+    expect(s.scenarios).toHaveLength(1);
+    expect(s.scenarios[0].id).toBe('baseline');
+  });
+});
+
+// ─── loadModel ────────────────────────────────────────────────────────────────
+
+describe('loadModel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useFlowStore.setState(BASELINE_INITIAL);
+    // Put a model on canvas so we can verify it gets cleared
+    useFlowStore.setState({ nodes: [{ id: 'old', type: 'source', position: { x: 0, y: 0 }, data: { label: 'Old' } }] as FlowNode[], globalDemand: 50, savedModelId: 'old-id', savedModelName: 'Old Model' });
+  });
+
+  const loadedModel: SerializedModel = { nodes: [], edges: [], globalDemand: 200 };
+
+  it('clears canvas state before the fetch resolves', async () => {
+    // Arrange: fetch resolves after we can check intermediate state
+    let resolveFetch!: (value: unknown) => void;
+    mockFetchModel.mockReturnValue(new Promise((r) => { resolveFetch = r; }));
+
+    const promise = useFlowStore.getState().loadModel('new-id');
+
+    // State should already be cleared (blank canvas, isSaving=true)
+    const mid = useFlowStore.getState();
+    expect(mid.nodes).toHaveLength(0);
+    expect(mid.savedModelId).toBeNull();
+    expect(mid.isSaving).toBe(true);
+
+    resolveFetch({ id: 'new-id', name: 'New', data: loadedModel });
+    await promise;
+  });
+
+  it('hydrates canvas on successful fetch', async () => {
+    mockFetchModel.mockResolvedValue({ id: 'new-id', name: 'New Model', data: loadedModel });
+
+    await useFlowStore.getState().loadModel('new-id');
+
+    const s = useFlowStore.getState();
+    expect(s.savedModelId).toBe('new-id');
+    expect(s.savedModelName).toBe('New Model');
+    expect(s.globalDemand).toBe(200);
+    expect(s.isSaving).toBe(false);
+  });
+
+  it('leaves canvas blank (not stale) when fetch fails', async () => {
+    mockFetchModel.mockRejectedValue(new Error('network error'));
+
+    await useFlowStore.getState().loadModel('bad-id');
+
+    const s = useFlowStore.getState();
+    // Canvas must be blank — old model must NOT be present
+    expect(s.nodes).toHaveLength(0);
+    expect(s.savedModelId).toBeNull();
+    expect(s.isSaving).toBe(false);
+    expect(s.saveError).toBe('network error');
+  });
+
+  it('loads a new model after a previous model was open (id change)', async () => {
+    const model2: SerializedModel = { nodes: [], edges: [], globalDemand: 42 };
+    mockFetchModel.mockResolvedValue({ id: 'id-2', name: 'Second', data: model2 });
+
+    await useFlowStore.getState().loadModel('id-2');
+
+    const s = useFlowStore.getState();
+    expect(s.savedModelId).toBe('id-2');
+    expect(s.globalDemand).toBe(42);
   });
 });

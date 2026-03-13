@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { isSerializedModel, insertModel, updateModel, fetchModel } from './persistence';
+import { isSerializedModel, insertModel, updateModel, fetchModel, listModels, renameModel, deleteModel } from './persistence';
 import type { SerializedModel } from '../types/flow';
 
 // Mock the supabase module
@@ -140,5 +140,87 @@ describe('fetchModel', () => {
     mockFrom.mockReturnValue({ select: mockSelect });
 
     await expect(fetchModel('row-id')).rejects.toThrow('invalid SerializedModel shape');
+  });
+});
+
+// ─── listModels ───────────────────────────────────────────────────────────────
+
+describe('listModels', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns rows ordered by updated_at descending', async () => {
+    const rows = [
+      { id: 'a', name: 'A', created_at: 't1', updated_at: 't2' },
+      { id: 'b', name: 'B', created_at: 't0', updated_at: 't1' },
+    ];
+    const mockOrder = vi.fn().mockResolvedValue({ data: rows, error: null });
+    const mockSelect = vi.fn().mockReturnValue({ order: mockOrder });
+    mockFrom.mockReturnValue({ select: mockSelect });
+
+    const result = await listModels();
+
+    expect(mockFrom).toHaveBeenCalledWith('models');
+    expect(mockSelect).toHaveBeenCalledWith('id, name, created_at, updated_at');
+    expect(mockOrder).toHaveBeenCalledWith('updated_at', { ascending: false });
+    expect(result).toEqual(rows);
+  });
+
+  it('throws when supabase returns an error', async () => {
+    const mockOrder = vi.fn().mockResolvedValue({ data: null, error: { message: 'list failed' } });
+    const mockSelect = vi.fn().mockReturnValue({ order: mockOrder });
+    mockFrom.mockReturnValue({ select: mockSelect });
+
+    await expect(listModels()).rejects.toThrow('list failed');
+  });
+});
+
+// ─── renameModel ──────────────────────────────────────────────────────────────
+
+describe('renameModel', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('calls update with name and eq with correct id', async () => {
+    const mockEq = vi.fn().mockResolvedValue({ error: null });
+    const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+    mockFrom.mockReturnValue({ update: mockUpdate });
+
+    await renameModel('model-id', 'New Name');
+
+    expect(mockFrom).toHaveBeenCalledWith('models');
+    expect(mockUpdate).toHaveBeenCalledWith({ name: 'New Name' });
+    expect(mockEq).toHaveBeenCalledWith('id', 'model-id');
+  });
+
+  it('throws when supabase returns an error', async () => {
+    const mockEq = vi.fn().mockResolvedValue({ error: { message: 'rename failed' } });
+    const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+    mockFrom.mockReturnValue({ update: mockUpdate });
+
+    await expect(renameModel('model-id', 'New Name')).rejects.toThrow('rename failed');
+  });
+});
+
+// ─── deleteModel ──────────────────────────────────────────────────────────────
+
+describe('deleteModel', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('calls delete and eq with the correct id', async () => {
+    const mockEq = vi.fn().mockResolvedValue({ error: null });
+    const mockDelete = vi.fn().mockReturnValue({ eq: mockEq });
+    mockFrom.mockReturnValue({ delete: mockDelete });
+
+    await deleteModel('model-id');
+
+    expect(mockFrom).toHaveBeenCalledWith('models');
+    expect(mockEq).toHaveBeenCalledWith('id', 'model-id');
+  });
+
+  it('throws when supabase returns an error', async () => {
+    const mockEq = vi.fn().mockResolvedValue({ error: { message: 'delete failed' } });
+    const mockDelete = vi.fn().mockReturnValue({ eq: mockEq });
+    mockFrom.mockReturnValue({ delete: mockDelete });
+
+    await expect(deleteModel('model-id')).rejects.toThrow('delete failed');
   });
 });

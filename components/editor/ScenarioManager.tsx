@@ -47,9 +47,6 @@ export default function ScenarioManager() {
   return (
     <section>
       <h2 style={panelSectionHeadingStyle}>Scenarios</h2>
-      <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 10px 0' }}>
-        Session only - scenarios are lost on page refresh.
-      </p>
       <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px 0' }}>
         {scenarios.map((s) => (
           <li

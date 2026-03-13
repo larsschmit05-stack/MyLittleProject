@@ -320,7 +320,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 12: Dashboard And Saved Scenarios
+## Step 12: Dashboard And Saved Scenarios (Completed)
 **Goal:** Complete the minimum V1 saved-model workflow.
 
 **What will be built:**

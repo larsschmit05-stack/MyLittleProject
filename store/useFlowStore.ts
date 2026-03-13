@@ -52,6 +52,7 @@ interface FlowActions {
   saveAsNewModel: (name: string) => Promise<void>;
   updateSavedModel: () => Promise<void>;
   loadModel: (id: string) => Promise<void>;
+  resetStore: () => void;
 }
 
 type FlowStore = FlowState & FlowActions;
@@ -290,8 +291,37 @@ const useFlowStore = create<FlowStore>((set, get) => {
       }
     },
 
+    resetStore: () => {
+      set({
+        nodes: [],
+        edges: [],
+        selectedElement: null,
+        globalDemand: 0,
+        derivedResults: null,
+        scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
+        activeScenarioId: BASELINE_ID,
+        savedModelId: null,
+        savedModelName: '',
+        isSaving: false,
+        saveError: null,
+      });
+    },
+
     loadModel: async (id) => {
-      set({ isSaving: true, saveError: null });
+      // Clear canvas immediately so stale state is never visible if load fails
+      set({
+        nodes: [],
+        edges: [],
+        selectedElement: null,
+        globalDemand: 0,
+        derivedResults: null,
+        savedModelId: null,
+        savedModelName: '',
+        scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
+        activeScenarioId: BASELINE_ID,
+        isSaving: true,
+        saveError: null,
+      });
       try {
         const row = await fetchModel(id);
         const model: SerializedModel = JSON.parse(JSON.stringify(row.data));

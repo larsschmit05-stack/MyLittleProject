@@ -1,5 +1,14 @@
-import EditorLayout from "@/components/editor/EditorLayout";
+import { Suspense } from 'react';
+import EditorLayout from '@/components/editor/EditorLayout';
+import EditorInitClient from '@/components/editor/EditorInitClient';
 
 export default function EditorPage() {
-  return <EditorLayout />;
+  return (
+    <>
+      <Suspense>
+        <EditorInitClient />
+      </Suspense>
+      <EditorLayout />
+    </>
+  );
 }

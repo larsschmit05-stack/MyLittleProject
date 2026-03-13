@@ -55,3 +55,28 @@ export async function fetchModel(id: string): Promise<SavedModelRow> {
   }
   return data as SavedModelRow;
 }
+
+export async function listModels(): Promise<Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('models')
+    .select('id, name, created_at, updated_at')
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data as Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>[];
+}
+
+export async function renameModel(id: string, name: string): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from('models')
+    .update({ name })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteModel(id: string): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from('models')
+    .delete()
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}

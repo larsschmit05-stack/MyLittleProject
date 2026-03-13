@@ -13,7 +13,6 @@ import {
   panelDividerStyle,
 } from './styles';
 import ScenarioManager from './ScenarioManager';
-import PersistenceControls from './PersistenceControls';
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
 
@@ -325,8 +324,6 @@ function SelectionContent() {
 export default function PropertiesPanel() {
   return (
     <div style={{ padding: '16px' }}>
-      <PersistenceControls />
-      <hr style={panelDividerStyle} />
       <ScenarioManager />
       <hr style={panelDividerStyle} />
       <GlobalDemandSection />
