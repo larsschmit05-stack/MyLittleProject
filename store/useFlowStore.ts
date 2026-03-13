@@ -10,6 +10,7 @@ import {
 } from 'reactflow';
 import { isValidConnection as checkConnection } from '../lib/flow/validation';
 import { calculateFlow } from '../utils/calculations';
+import { insertModel, updateModel, fetchModel } from '../lib/persistence';
 import type {
   FlowNode,
   FlowNodeType,
@@ -29,6 +30,10 @@ interface FlowState {
   derivedResults: DerivedResults;
   scenarios: Scenario[];
   activeScenarioId: string;
+  savedModelId: string | null;
+  savedModelName: string;
+  isSaving: boolean;
+  saveError: string | null;
 }
 
 interface FlowActions {
@@ -44,6 +49,9 @@ interface FlowActions {
   duplicateActiveScenario: (name: string) => void;
   switchScenario: (id: string) => void;
   deleteScenario: (id: string) => void;
+  saveAsNewModel: (name: string) => Promise<void>;
+  updateSavedModel: () => Promise<void>;
+  loadModel: (id: string) => Promise<void>;
 }
 
 type FlowStore = FlowState & FlowActions;
@@ -130,6 +138,10 @@ const useFlowStore = create<FlowStore>((set, get) => {
     derivedResults: null,
     scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
     activeScenarioId: BASELINE_ID,
+    savedModelId: null,
+    savedModelName: '',
+    isSaving: false,
+    saveError: null,
 
     onNodesChange: (changes) => {
       const currentState = get();
@@ -252,6 +264,54 @@ const useFlowStore = create<FlowStore>((set, get) => {
         get().switchScenario(next[0].id);
       }
       set({ scenarios: get().scenarios.filter((s) => s.id !== id) });
+    },
+
+    saveAsNewModel: async (name) => {
+      set({ isSaving: true, saveError: null });
+      try {
+        const model = get().getSerializedModel();
+        const id = await insertModel(name, model);
+        set({ savedModelId: id, savedModelName: name, isSaving: false });
+      } catch (err) {
+        set({ isSaving: false, saveError: (err as Error).message });
+      }
+    },
+
+    updateSavedModel: async () => {
+      const { savedModelId } = get();
+      if (!savedModelId) return;
+      set({ isSaving: true, saveError: null });
+      try {
+        const model = get().getSerializedModel();
+        await updateModel(savedModelId, model);
+        set({ isSaving: false });
+      } catch (err) {
+        set({ isSaving: false, saveError: (err as Error).message });
+      }
+    },
+
+    loadModel: async (id) => {
+      set({ isSaving: true, saveError: null });
+      try {
+        const row = await fetchModel(id);
+        const model: SerializedModel = JSON.parse(JSON.stringify(row.data));
+        const nextNodes = model.nodes.map((n) => ({ ...n })) as FlowNode[];
+        const nextEdges = model.edges.map((e) => ({ ...e }));
+        set({
+          nodes: nextNodes,
+          edges: nextEdges,
+          globalDemand: model.globalDemand,
+          derivedResults: calculateFlow(model),
+          selectedElement: null,
+          savedModelId: id,
+          savedModelName: row.name,
+          isSaving: false,
+          scenarios: [{ id: BASELINE_ID, name: 'Baseline', model }],
+          activeScenarioId: BASELINE_ID,
+        });
+      } catch (err) {
+        set({ isSaving: false, saveError: (err as Error).message });
+      }
     },
   };
 });

@@ -254,7 +254,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 11: Persistence Model
+## Step 11: Persistence Model (Completed)
 **Goal:** Define the minimum backend structure needed for save/load and saved scenarios.
 
 **What will be built:**
@@ -265,6 +265,54 @@ The plan is intentionally strict:
   - edges
   - global demand
 - Save and load functions against Supabase.
+
+**Detailed Implementation Steps for Claude:**
+1. **Supabase Schema:**
+   - Create a `models` table with:
+     - `id: uuid`
+     - `name: text`
+     - `data: jsonb`
+     - `created_at: timestamptz`
+     - `updated_at: timestamptz`
+   - For V1, each saved scenario is stored as its own saved model row.
+   - The `data` payload must match the existing `SerializedModel` shape used by the editor.
+2. **Client Setup:**
+   - Create `lib/supabase.ts` for the browser client using `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+   - Provide an `.env.local` template if one is missing.
+3. **Store Persistence State:**
+   - Add minimal persistence metadata to the store:
+     - `savedModelId: string | null`
+     - `savedModelName: string`
+   - This metadata is used only to determine whether the user is saving a new model or updating an existing saved model.
+4. **Persistence Actions:**
+   - Implement `saveAsNewModel(name: string)`:
+     - Serialize the current live model.
+     - Insert a new row into `models`.
+     - Store the returned `id` as `savedModelId`.
+   - Implement `updateSavedModel(id: string)`:
+     - Serialize the current live model.
+     - Update the matching row in `models`.
+   - Implement `loadModel(id: string)`:
+     - Fetch the row from Supabase.
+     - Validate that `data` matches the expected `SerializedModel` shape before hydrating state.
+     - Hydrate `nodes`, `edges`, `globalDemand`, derived results, `savedModelId`, and `savedModelName`.
+     - Reset local Step 10 scenario state to a single baseline scenario based on the loaded model.
+5. **UI Scope:**
+   - Add manual save/load controls only.
+   - Keep Step 11 limited to explicit user-triggered save and load actions.
+   - Do not add dashboard listing behavior here; that remains Step 12.
+6. **Tests:**
+   - Add tests for:
+     - serialization payload correctness
+     - load hydration correctness
+     - reset of local scenarios on load
+     - save-as-new versus update-existing behavior
+
+**Risks & Mitigations:**
+- **Overwrite Risk:** Updating an existing saved row can overwrite the wrong model if identity is ambiguous. *Mitigation: use explicit `saveAsNewModel` and `updateSavedModel` actions plus `savedModelId` in store state.*
+- **Scenario Mapping Drift:** Step 10 local scenarios could conflict with loaded persisted models. *Mitigation: on load, reset local scenario state to one baseline scenario derived from the loaded model.*
+- **Invalid Payload Risk:** Bad or partial JSON could break hydration. *Mitigation: validate the fetched `data` shape before applying it to the store.*
+- **RLS / Security Risk:** Anonymous access can block or overexpose data. *Mitigation: if auth is not yet implemented, any relaxed RLS must be treated as temporary and V1-only.*
 
 **Success Criteria:**
 - A model can be saved and loaded without losing graph structure or process parameters.
