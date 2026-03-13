@@ -2,7 +2,7 @@
 
 import { Handle, Position, NodeProps } from 'reactflow';
 import type { ProcessNodeData } from '../../../types/flow';
-import { getNodeStyle, nodeLabelStyle } from '../styles';
+import { getNodeStyle, nodeLabelStyle, nodeValueStyle } from '../styles';
 import useFlowStore from '../../../store/useFlowStore';
 import {
   getProcessNodeStatusColor,
@@ -19,9 +19,7 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
   const nodeResult = useFlowStore((s) => s.derivedResults?.nodeResults[id] ?? null);
   const isBottleneck = useFlowStore((s) => s.derivedResults?.bottleneckNodeId === id);
   const statusColor = nodeResult
-    ? isBottleneck
-      ? 'var(--color-bottleneck)'
-      : getProcessNodeStatusColor(nodeResult.utilization)
+    ? getProcessNodeStatusColor(nodeResult.utilization)
     : 'var(--color-border)';
   const showWarning = nodeResult ? shouldShowProcessNodeWarning(nodeResult.utilization) : false;
 
@@ -33,7 +31,7 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
         : '1px solid var(--color-border)';
 
   const boxShadow = isBottleneck
-    ? '0 0 0 3px color-mix(in srgb, var(--color-bottleneck) 20%, transparent)'
+    ? '0 0 0 3px color-mix(in srgb, var(--color-action) 20%, transparent)'
     : undefined;
 
   return (
@@ -44,8 +42,8 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
           title="Utilization above 95%"
           style={{
             position: 'absolute',
-            top: '6px',
-            right: '6px',
+            top: '8px',
+            right: '8px',
             width: '16px',
             height: '14px',
             display: 'flex',
@@ -69,17 +67,39 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
         </div>
       )}
       <div style={nodeLabelStyle}>Process</div>
-      <div>{data.name}</div>
-      {isBottleneck && nodeResult && (
-        <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-bottleneck)', marginTop: '4px' }}>
-          Bottleneck
+      <div style={{ fontWeight: 600, marginBottom: '8px' }}>{data.name}</div>
+      
+      {nodeResult && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>REQ</span>
+            <span style={nodeValueStyle}>{formatNumberShort(nodeResult.requiredThroughput)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>CAP</span>
+            <span style={nodeValueStyle}>{formatNumberShort(nodeResult.effectiveCapacity)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px', borderTop: '1px solid var(--color-border)', paddingTop: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>UTIL</span>
+            <span style={{ ...nodeValueStyle, color: statusColor }}>{fmtUtil(nodeResult.utilization)}</span>
+          </div>
         </div>
       )}
-      {nodeResult && (
-        <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-          <div>Req: {formatNumberShort(nodeResult.requiredThroughput)}</div>
-          <div>Cap: {formatNumberShort(nodeResult.effectiveCapacity)}</div>
-          <div>Util: {fmtUtil(nodeResult.utilization)}</div>
+
+      {isBottleneck && (
+        <div style={{ 
+          position: 'absolute',
+          bottom: '-18px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: '9px',
+          fontWeight: 700,
+          color: 'var(--color-action)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          whiteSpace: 'nowrap'
+        }}>
+          Bottleneck
         </div>
       )}
       <Handle type="target" position={Position.Left} />

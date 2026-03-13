@@ -42,3 +42,6 @@ next-env.d.ts
 
 # AI local settings
 .claude/
+
+.gemini/
+gha-creds-*.json

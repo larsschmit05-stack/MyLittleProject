@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { isSerializedModel, insertModel, updateModel, fetchModel, listModels, renameModel, deleteModel } from './persistence';
+import { isSerializedModel, insertModel, updateModel, fetchModel, listModels, renameModel, deleteModel, duplicateModel } from './persistence';
 import type { SerializedModel } from '../types/flow';
 
 // Mock the supabase module
@@ -222,5 +222,45 @@ describe('deleteModel', () => {
     mockFrom.mockReturnValue({ delete: mockDelete });
 
     await expect(deleteModel('model-id')).rejects.toThrow('delete failed');
+  });
+});
+
+// ─── duplicateModel ───────────────────────────────────────────────────────────
+
+describe('duplicateModel', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('fetches original and inserts a copy with new name', async () => {
+    const original = { name: 'Original', data: validModel };
+    const mockFetchSingle = vi.fn().mockResolvedValue({ data: original, error: null });
+    const mockFetchEq = vi.fn().mockReturnValue({ single: mockFetchSingle });
+    const mockFetchSelect = vi.fn().mockReturnValue({ eq: mockFetchEq });
+    
+    const mockInsertSingle = vi.fn().mockResolvedValue({ data: { id: 'copy-id' }, error: null });
+    const mockInsertSelect = vi.fn().mockReturnValue({ single: mockInsertSingle });
+    const mockInsert = vi.fn().mockReturnValue({ select: mockInsertSelect });
+
+    mockFrom.mockImplementation((table) => {
+      if (table === 'models') {
+        return {
+          select: (fields: string) => {
+            if (fields === 'name, data') {
+              return { eq: vi.fn().mockReturnValue({ single: mockFetchSingle }) };
+            }
+            if (fields === 'id') {
+              return { single: mockInsertSingle };
+            }
+            return {};
+          },
+          insert: mockInsert,
+        };
+      }
+      return {};
+    });
+
+    const newId = await duplicateModel('orig-id');
+
+    expect(mockInsert).toHaveBeenCalledWith({ name: 'Original (Copy)', data: validModel });
+    expect(newId).toBe('copy-id');
   });
 });

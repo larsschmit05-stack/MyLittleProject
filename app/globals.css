@@ -2,6 +2,7 @@
 
 @theme inline {
   --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono);
 
   /* Background */
   --color-bg-primary: #ffffff;
@@ -27,8 +28,6 @@
 }
 
 :root {
-  --font-inter: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-
   /* Canvas dot-grid (used as CSS custom properties, not Tailwind tokens) */
   --canvas-dot-color: #e5e7eb;
   --canvas-dot-size: 1.5px;

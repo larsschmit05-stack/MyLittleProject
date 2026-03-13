@@ -80,3 +80,22 @@ export async function deleteModel(id: string): Promise<void> {
     .eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+export async function duplicateModel(id: string): Promise<string> {
+  const { data: original, error: fetchError } = await getSupabaseClient()
+    .from('models')
+    .select('name, data')
+    .eq('id', id)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+
+  const newName = `${original.name} (Copy)`;
+  const { data: created, error: insertError } = await getSupabaseClient()
+    .from('models')
+    .insert({ name: newName, data: original.data })
+    .select('id')
+    .single();
+  if (insertError) throw new Error(insertError.message);
+
+  return created.id as string;
+}

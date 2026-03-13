@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { listModels, renameModel, deleteModel } from '../../lib/persistence';
+import { listModels, renameModel, deleteModel, duplicateModel } from '../../lib/persistence';
 import type { SavedModelRow } from '../../lib/persistence';
 import useFlowStore from '../../store/useFlowStore';
 
@@ -14,8 +14,8 @@ function fmtDate(iso: string): string {
 const primaryBtn: React.CSSProperties = {
   padding: '8px 16px',
   fontSize: '14px',
-  fontWeight: 500,
-  borderRadius: '6px',
+  fontWeight: 600,
+  borderRadius: '8px',
   border: 'none',
   background: 'var(--color-action)',
   color: '#fff',
@@ -27,7 +27,7 @@ const secondaryBtn: React.CSSProperties = {
   background: 'transparent',
   border: '1px solid var(--color-border)',
   color: 'var(--color-text-primary)',
-  padding: '6px 12px',
+  padding: '8px 12px',
   fontSize: '13px',
 };
 
@@ -96,6 +96,15 @@ export default function DashboardPage() {
       setModels((prev) => prev.filter((m) => m.id !== id));
     } catch (err) {
       alert('Failed to delete: ' + (err as Error).message);
+    }
+  }
+
+  async function handleDuplicate(id: string) {
+    try {
+      await duplicateModel(id);
+      await load();
+    } catch (err) {
+      alert('Failed to duplicate: ' + (err as Error).message);
     }
   }
 
@@ -169,8 +178,8 @@ export default function DashboardPage() {
                         fontWeight: 500,
                         color: 'var(--color-text-primary)',
                         border: '1px solid var(--color-action)',
-                        borderRadius: '4px',
-                        padding: '2px 6px',
+                        borderRadius: '8px',
+                        padding: '4px 8px',
                         outline: 'none',
                         width: '100%',
                         boxSizing: 'border-box',
@@ -182,7 +191,7 @@ export default function DashboardPage() {
                       title="Click to rename"
                       style={{
                         fontSize: '14px',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         color: 'var(--color-text-primary)',
                         cursor: 'text',
                         display: 'block',
@@ -203,6 +212,9 @@ export default function DashboardPage() {
                 <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                   <button onClick={() => handleOpen(model.id)} style={secondaryBtn}>
                     Open
+                  </button>
+                  <button onClick={() => handleDuplicate(model.id)} style={secondaryBtn}>
+                    Duplicate
                   </button>
                   <button onClick={() => handleDelete(model.id, model.name)} style={dangerBtn}>
                     Delete
