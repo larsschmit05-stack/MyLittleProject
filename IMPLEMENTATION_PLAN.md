@@ -211,7 +211,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 10: Local Scenario Duplication
+## Step 10: Local Scenario Duplication (Completed)
 **Goal:** Allow users to create "What-If" scenarios by duplicating the current model in the local session. This enables testing different configurations (e.g., adding a resource) without losing the original state.
 
 **What will be built:**
