@@ -10,7 +10,7 @@ export interface SinkNodeData {
 
 export interface ProcessNodeData {
   name: string;
-  cycleTime: number;
+  throughputRate: number;
   availableTime: number;
   yield: number;
   numberOfResources: number;

@@ -8,7 +8,8 @@ import {
   NodeChange,
   EdgeChange,
 } from 'reactflow';
-import { isValidConnection as checkConnection } from '../components/editor/validation';
+import { isValidConnection as checkConnection } from '../lib/flow/validation';
+import { calculateFlow } from '../utils/calculations';
 import type {
   FlowNode,
   FlowNodeType,
@@ -121,6 +122,10 @@ const useFlowStore = create<FlowStore>((set, get) => ({
         currentState.edges
       ),
     });
+
+    if (changes.some((c) => c.type === 'remove')) {
+      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+    }
   },
 
   onEdgesChange: (changes) => {
@@ -135,16 +140,22 @@ const useFlowStore = create<FlowStore>((set, get) => ({
         nextEdges
       ),
     });
+
+    if (changes.some((c) => c.type === 'add' || c.type === 'remove')) {
+      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+    }
   },
 
   onConnect: (connection) => {
     const { nodes, edges } = get();
     if (!checkConnection(connection, nodes, edges)) return;
     set({ edges: addEdge(connection, edges) });
+    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
   },
 
   addNode: (node) => {
     set({ nodes: [...get().nodes, node] });
+    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
   },
 
   updateNodeData: (nodeId, data) => {
@@ -155,10 +166,12 @@ const useFlowStore = create<FlowStore>((set, get) => ({
           : node
       ) as FlowNode[],
     });
+    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
   },
 
   setGlobalDemand: (demand) => {
     set({ globalDemand: demand });
+    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
   },
 
   selectElement: (element) => {

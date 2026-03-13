@@ -1,4 +1,4 @@
-import { Connection, Edge, Node } from 'reactflow';
+import type { Connection, Edge, Node } from 'reactflow';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -6,12 +6,35 @@ export interface ValidationResult {
 }
 
 type NodeType = 'source' | 'process' | 'sink';
+type ProcessField =
+  | 'throughputRate'
+  | 'availableTime'
+  | 'yield'
+  | 'numberOfResources'
+  | 'conversionRatio';
 
 const VALID_CONNECTIONS: Record<NodeType, NodeType[]> = {
   source: ['process', 'sink'],
   process: ['process', 'sink'],
   sink: [],
 };
+
+export function isProcessValueValid(field: ProcessField, value: number): boolean {
+  switch (field) {
+    case 'throughputRate':
+      return value > 0;
+    case 'availableTime':
+      return value >= 0;
+    case 'yield':
+      return value > 0 && value <= 100;
+    case 'numberOfResources':
+      return value >= 1;
+    case 'conversionRatio':
+      return value > 0;
+    default:
+      return false;
+  }
+}
 
 function canReach(from: string, target: string, edges: Edge[]): boolean {
   const visited = new Set<string>();

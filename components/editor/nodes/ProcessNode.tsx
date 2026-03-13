@@ -2,36 +2,32 @@
 
 import { Handle, Position, NodeProps } from 'reactflow';
 import type { ProcessNodeData } from '../../../types/flow';
+import { getNodeStyle, nodeLabelStyle } from '../styles';
+import useFlowStore from '../../../store/useFlowStore';
 
-export default function ProcessNode({ data, selected }: NodeProps<ProcessNodeData>) {
+function fmt(n: number): string {
+  return isFinite(n) ? n.toFixed(2) : 'N/A';
+}
+
+function fmtUtil(utilization: number): string {
+  if (!isFinite(utilization)) return 'N/A';
+  return (utilization * 100).toFixed(1) + '%';
+}
+
+export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNodeData>) {
+  const nodeResult = useFlowStore((s) => s.derivedResults?.nodeResults[id] ?? null);
+
   return (
-    <div
-      style={{
-        background: 'var(--color-bg-primary)',
-        border: selected
-          ? '2px solid var(--color-action)'
-          : '1px solid var(--color-border)',
-        borderRadius: '8px',
-        padding: '10px 14px',
-        minWidth: '120px',
-        fontSize: '13px',
-        fontWeight: 500,
-        color: 'var(--color-text-primary)',
-        cursor: 'default',
-      }}
-    >
-      <div
-        style={{
-          marginBottom: '4px',
-          fontSize: '10px',
-          color: 'var(--color-text-label)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}
-      >
-        Process
-      </div>
+    <div style={getNodeStyle(selected)}>
+      <div style={nodeLabelStyle}>Process</div>
       <div>{data.name}</div>
+      {nodeResult && (
+        <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+          <div>Req: {fmt(nodeResult.requiredThroughput)}</div>
+          <div>Cap: {fmt(nodeResult.effectiveCapacity)}</div>
+          <div>Util: {fmtUtil(nodeResult.utilization)}</div>
+        </div>
+      )}
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
     </div>

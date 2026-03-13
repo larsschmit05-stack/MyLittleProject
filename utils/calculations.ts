@@ -1,9 +1,5 @@
 import type { SerializedModel, SerializedNode, ProcessNodeData, FlowResult, NodeResult } from '../types/flow';
 
-export function toHours(minutes: number): number {
-  return minutes / 60;
-}
-
 export function yieldToFraction(yieldPercent: number): number {
   return yieldPercent / 100;
 }
@@ -84,12 +80,12 @@ function getOrderedProcessChain(model: SerializedModel): SerializedNode[] | null
 }
 
 function computeEffectiveCapacity(data: ProcessNodeData): number {
-  const cycleHours = toHours(data.cycleTime);
-  const availHours = toHours(data.availableTime);
+  const throughputRate = data.throughputRate;
+  const availHours = data.availableTime;
   const yieldFrac = yieldToFraction(data.yield);
 
   if (
-    cycleHours <= 0 ||
+    throughputRate <= 0 ||
     availHours <= 0 ||
     yieldFrac <= 0 ||
     data.numberOfResources <= 0
@@ -97,7 +93,7 @@ function computeEffectiveCapacity(data: ProcessNodeData): number {
     return 0;
   }
 
-  return (availHours / cycleHours) * data.numberOfResources * yieldFrac;
+  return throughputRate * availHours * data.numberOfResources * yieldFrac;
 }
 
 export function calculateFlow(model: SerializedModel): FlowResult {
@@ -107,7 +103,7 @@ export function calculateFlow(model: SerializedModel): FlowResult {
   if (chain === null) return EMPTY_RESULT;
 
   if (chain.length === 0) {
-    // Source connects directly to Sink — no process nodes
+    // Source connects directly to Sink with no constraining process capacity.
     return { systemThroughput: model.globalDemand, bottleneckNodeId: null, nodeResults: {} };
   }
 

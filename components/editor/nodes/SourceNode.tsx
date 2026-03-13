@@ -1,35 +1,12 @@
 'use client';
 
 import { Handle, Position, NodeProps } from 'reactflow';
+import { getNodeStyle, nodeLabelStyle } from '../styles';
 
 export default function SourceNode({ data, selected }: NodeProps<{ label: string }>) {
   return (
-    <div
-      style={{
-        background: 'var(--color-bg-primary)',
-        border: selected
-          ? '2px solid var(--color-action)'
-          : '1px solid var(--color-border)',
-        borderRadius: '8px',
-        padding: '10px 14px',
-        minWidth: '120px',
-        fontSize: '13px',
-        fontWeight: 500,
-        color: 'var(--color-text-primary)',
-        cursor: 'default',
-      }}
-    >
-      <div
-        style={{
-          marginBottom: '4px',
-          fontSize: '10px',
-          color: 'var(--color-text-label)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}
-      >
-        Source
-      </div>
+    <div style={getNodeStyle(selected)}>
+      <div style={nodeLabelStyle}>Source</div>
       <div>{data.label}</div>
       <Handle type="source" position={Position.Right} />
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toHours, yieldToFraction, calculateFlow } from './calculations';
+import { yieldToFraction, calculateFlow } from './calculations';
 import type { SerializedModel, SerializedNode } from '../types/flow';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ function makeSink(id: string): SerializedNode {
 
 function makeProcess(id: string, overrides: Partial<{
   name: string;
-  cycleTime: number;
+  throughputRate: number;
   availableTime: number;
   yield: number;
   numberOfResources: number;
@@ -26,8 +26,8 @@ function makeProcess(id: string, overrides: Partial<{
     position: { x: 0, y: 0 },
     data: {
       name: overrides.name ?? 'Process',
-      cycleTime: overrides.cycleTime ?? 60,       // 1 hour
-      availableTime: overrides.availableTime ?? 480, // 8 hours
+      throughputRate: overrides.throughputRate ?? 1, // 1 unit/hour
+      availableTime: overrides.availableTime ?? 8, // 8 hours
       yield: overrides.yield ?? 100,
       numberOfResources: overrides.numberOfResources ?? 1,
       conversionRatio: overrides.conversionRatio ?? 1,
@@ -48,18 +48,6 @@ function makeModel(
 }
 
 // ─── Unit tests ───────────────────────────────────────────────────────────────
-
-describe('toHours', () => {
-  it('converts 60 minutes to 1 hour', () => {
-    expect(toHours(60)).toBe(1);
-  });
-  it('converts 120 minutes to 2 hours', () => {
-    expect(toHours(120)).toBe(2);
-  });
-  it('converts 30 minutes to 0.5 hours', () => {
-    expect(toHours(30)).toBe(0.5);
-  });
-});
 
 describe('yieldToFraction', () => {
   it('converts 100% to 1.0', () => {
@@ -112,7 +100,7 @@ describe('calculateFlow — yield loss', () => {
   });
 
   it('effective capacity is reduced proportionally by yield fraction', () => {
-    // EC = (480min / 60min) × 1 × 0.8 = 6.4
+    // EC = (8h / 1h) × 1 × 0.8 = 6.4
     const model = makeModel(
       [makeSource('src'), makeProcess('p', { yield: 80 }), makeSink('snk')],
       [['src', 'p'], ['p', 'snk']],
@@ -130,8 +118,8 @@ describe('calculateFlow — conversion ratio', () => {
     const model = makeModel(
       [
         makeSource('src'),
-        makeProcess('p_up', { cycleTime: 60, availableTime: 480, yield: 100, conversionRatio: 1 }),
-        makeProcess('p_down', { cycleTime: 60, availableTime: 480, yield: 100, conversionRatio: 4 }),
+        makeProcess('p_up', { throughputRate: 1, availableTime: 8, yield: 100, conversionRatio: 1 }),
+        makeProcess('p_down', { throughputRate: 1, availableTime: 8, yield: 100, conversionRatio: 4 }),
         makeSink('snk'),
       ],
       [['src', 'p_up'], ['p_up', 'p_down'], ['p_down', 'snk']],
@@ -150,9 +138,9 @@ describe('calculateFlow — normalized system throughput', () => {
     const model = makeModel(
       [
         makeSource('src'),
-        makeProcess('p1', { cycleTime: 60, availableTime: 600, yield: 100, numberOfResources: 1, conversionRatio: 1 }), // EC = 10
-        makeProcess('p2', { cycleTime: 60, availableTime: 600, yield: 80, numberOfResources: 1, conversionRatio: 2 }), // EC = 8
-        makeProcess('p3', { cycleTime: 60, availableTime: 900, yield: 90, numberOfResources: 1, conversionRatio: 3 }), // EC = 13.5
+        makeProcess('p1', { throughputRate: 1, availableTime: 10, yield: 100, numberOfResources: 1, conversionRatio: 1 }), // EC = 10
+        makeProcess('p2', { throughputRate: 1, availableTime: 10, yield: 80, numberOfResources: 1, conversionRatio: 2 }), // EC = 8
+        makeProcess('p3', { throughputRate: 1, availableTime: 15, yield: 90, numberOfResources: 1, conversionRatio: 3 }), // EC = 13.5
         makeSink('snk'),
       ],
       [['src', 'p1'], ['p1', 'p2'], ['p2', 'p3'], ['p3', 'snk']],
@@ -170,14 +158,24 @@ describe('calculateFlow — normalized system throughput', () => {
 });
 
 describe('calculateFlow — effective capacity', () => {
-  it('(480min / 60min) × 2 resources × 1.0 yield = 16', () => {
+  it('2 units/hour × 8 hours × 2 resources × 1.0 yield = 32', () => {
     const model = makeModel(
-      [makeSource('src'), makeProcess('p', { availableTime: 480, cycleTime: 60, numberOfResources: 2, yield: 100 }), makeSink('snk')],
+      [makeSource('src'), makeProcess('p', { availableTime: 8, throughputRate: 2, numberOfResources: 2, yield: 100 }), makeSink('snk')],
       [['src', 'p'], ['p', 'snk']],
       10
     );
     const result = calculateFlow(model);
-    expect(result.nodeResults['p'].effectiveCapacity).toBeCloseTo(16);
+    expect(result.nodeResults['p'].effectiveCapacity).toBeCloseTo(32);
+  });
+
+  it('60 units/hour and 40 available hours yields 2400 units per period', () => {
+    const model = makeModel(
+      [makeSource('src'), makeProcess('p', { availableTime: 40, throughputRate: 60, numberOfResources: 1, yield: 100 }), makeSink('snk')],
+      [['src', 'p'], ['p', 'snk']],
+      10
+    );
+    const result = calculateFlow(model);
+    expect(result.nodeResults['p'].effectiveCapacity).toBeCloseTo(2400);
   });
 });
 
@@ -188,8 +186,8 @@ describe('calculateFlow — bottleneck detection', () => {
     const model = makeModel(
       [
         makeSource('src'),
-        makeProcess('p1', { cycleTime: 60, availableTime: 480, numberOfResources: 1, yield: 100, conversionRatio: 1 }), // EC=8
-        makeProcess('p2', { cycleTime: 60, availableTime: 480, numberOfResources: 2, yield: 100, conversionRatio: 1 }), // EC=16
+        makeProcess('p1', { throughputRate: 1, availableTime: 8, numberOfResources: 1, yield: 100, conversionRatio: 1 }), // EC=8
+        makeProcess('p2', { throughputRate: 1, availableTime: 8, numberOfResources: 2, yield: 100, conversionRatio: 1 }), // EC=16
         makeSink('snk'),
       ],
       [['src', 'p1'], ['p1', 'p2'], ['p2', 'snk']],
@@ -203,9 +201,9 @@ describe('calculateFlow — bottleneck detection', () => {
 });
 
 describe('calculateFlow — zero-value protection', () => {
-  it('cycleTime=0 → effectiveCapacity=0', () => {
+  it('throughputRate=0 → effectiveCapacity=0', () => {
     const model = makeModel(
-      [makeSource('src'), makeProcess('p', { cycleTime: 0 }), makeSink('snk')],
+      [makeSource('src'), makeProcess('p', { throughputRate: 0 }), makeSink('snk')],
       [['src', 'p'], ['p', 'snk']],
       10
     );
@@ -215,7 +213,7 @@ describe('calculateFlow — zero-value protection', () => {
 
   it('EC=0 with positive demand → utilization=Infinity', () => {
     const model = makeModel(
-      [makeSource('src'), makeProcess('p', { cycleTime: 0 }), makeSink('snk')],
+      [makeSource('src'), makeProcess('p', { throughputRate: 0 }), makeSink('snk')],
       [['src', 'p'], ['p', 'snk']],
       10
     );
@@ -225,7 +223,7 @@ describe('calculateFlow — zero-value protection', () => {
 
   it('EC=0 with zero demand → utilization=0', () => {
     const model = makeModel(
-      [makeSource('src'), makeProcess('p', { cycleTime: 0 }), makeSink('snk')],
+      [makeSource('src'), makeProcess('p', { throughputRate: 0 }), makeSink('snk')],
       [['src', 'p'], ['p', 'snk']],
       0
     );
@@ -242,7 +240,7 @@ describe('calculateFlow — edge cases', () => {
     expect(result.nodeResults).toEqual({});
   });
 
-  it('source-sink only (no process nodes) returns globalDemand as systemThroughput', () => {
+  it('source-sink only (no process nodes) preserves global demand as throughput', () => {
     const model = makeModel(
       [makeSource('src'), makeSink('snk')],
       [['src', 'snk']],
@@ -250,6 +248,7 @@ describe('calculateFlow — edge cases', () => {
     );
     const result = calculateFlow(model);
     expect(result.systemThroughput).toBe(5);
+    expect(result.bottleneckNodeId).toBeNull();
     expect(result.nodeResults).toEqual({});
   });
 

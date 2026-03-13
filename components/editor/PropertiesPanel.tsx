@@ -1,47 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import useFlowStore from '../../store/useFlowStore';
 import type { ProcessNodeData } from '../../types/flow';
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '12px',
-  fontWeight: 500,
-  color: 'var(--color-text-secondary)',
-  marginBottom: '4px',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  fontSize: '14px',
-  color: 'var(--color-text-primary)',
-  background: 'var(--color-bg-primary)',
-  border: '1px solid var(--color-border)',
-  borderRadius: '4px',
-  padding: '6px 8px',
-  outline: 'none',
-};
-
-const sectionHeadingStyle: React.CSSProperties = {
-  fontSize: '12px',
-  fontWeight: 500,
-  color: 'var(--color-text-label)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  margin: '0 0 12px 0',
-};
-
-const fieldGroupStyle: React.CSSProperties = {
-  marginBottom: '12px',
-};
-
-const dividerStyle: React.CSSProperties = {
-  border: 'none',
-  borderTop: '1px solid var(--color-border)',
-  margin: '16px 0',
-};
+import { isProcessValueValid } from '../../lib/flow/validation';
+import {
+  panelLabelStyle,
+  panelInputStyle,
+  panelInvalidInputStyle,
+  panelSectionHeadingStyle,
+  panelFieldGroupStyle,
+  panelDividerStyle,
+} from './styles';
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
 
@@ -69,18 +39,21 @@ function GlobalDemandSection() {
 
   return (
     <section>
-      <h2 style={sectionHeadingStyle}>Global Demand</h2>
-      <div style={fieldGroupStyle}>
-        <label style={labelStyle} htmlFor="global-demand">
-          Units per period
+      <h2 style={panelSectionHeadingStyle}>Global Demand</h2>
+      <div style={panelFieldGroupStyle}>
+        <label style={panelLabelStyle} htmlFor="global-demand">
+          Units for the same period as Available Time
         </label>
+        <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+          Example: if Available Time is weekly hours, demand is units per week.
+        </p>
         <input
           id="global-demand"
           type="number"
           value={raw}
           onChange={handleChange}
           onBlur={handleBlur}
-          style={inputStyle}
+          style={panelInputStyle}
           onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
           onBlurCapture={(e) => (e.target.style.outline = 'none')}
         />
@@ -98,9 +71,17 @@ interface ProcessFormProps {
 
 type NumericField = keyof Omit<ProcessNodeData, 'name'>;
 
+const FIELD_HELP_TEXT: Record<NumericField, string> = {
+  throughputRate: 'Throughput Rate must be greater than 0.',
+  availableTime: 'Available Time must be 0 or greater.',
+  yield: 'Yield must be greater than 0 and at most 100.',
+  numberOfResources: 'Number of Resources must be at least 1.',
+  conversionRatio: 'Conversion Ratio must be greater than 0.',
+};
+
 const NUMERIC_FIELDS: { key: NumericField; label: string }[] = [
-  { key: 'cycleTime', label: 'Cycle Time' },
-  { key: 'availableTime', label: 'Available Time' },
+  { key: 'throughputRate', label: 'Throughput Rate (units/hr)' },
+  { key: 'availableTime', label: 'Available Time (hours in the demand period)' },
   { key: 'yield', label: 'Yield (%)' },
   { key: 'numberOfResources', label: 'Number of Resources' },
   { key: 'conversionRatio', label: 'Conversion Ratio' },
@@ -111,24 +92,13 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
 
   const [name, setName] = useState(data.name);
   const [rawValues, setRawValues] = useState<Record<NumericField, string>>({
-    cycleTime: String(data.cycleTime),
+    throughputRate: String(data.throughputRate),
     availableTime: String(data.availableTime),
     yield: String(data.yield),
     numberOfResources: String(data.numberOfResources),
     conversionRatio: String(data.conversionRatio),
   });
-
-  // Re-initialize when a different node is selected
-  useEffect(() => {
-    setName(data.name);
-    setRawValues({
-      cycleTime: String(data.cycleTime),
-      availableTime: String(data.availableTime),
-      yield: String(data.yield),
-      numberOfResources: String(data.numberOfResources),
-      conversionRatio: String(data.conversionRatio),
-    });
-  }, [nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [invalidFields, setInvalidFields] = useState<Partial<Record<NumericField, string>>>({});
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
@@ -139,22 +109,43 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
   function handleNumericChange(field: NumericField, str: string) {
     setRawValues((prev) => ({ ...prev, [field]: str }));
     const n = parseFloat(str);
-    if (isFinite(n)) updateNodeData(nodeId, { [field]: n });
+
+    if (!isFinite(n)) {
+      setInvalidFields((prev) => ({ ...prev, [field]: FIELD_HELP_TEXT[field] }));
+      return;
+    }
+
+    if (!isProcessValueValid(field, n)) {
+      setInvalidFields((prev) => ({ ...prev, [field]: FIELD_HELP_TEXT[field] }));
+      return;
+    }
+
+    setInvalidFields((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    updateNodeData(nodeId, { [field]: n });
   }
 
   function handleNumericBlur(field: NumericField) {
     const n = parseFloat(rawValues[field]);
-    if (!isFinite(n)) {
+    if (!isFinite(n) || !isProcessValueValid(field, n)) {
       setRawValues((prev) => ({ ...prev, [field]: String(data[field]) }));
+      setInvalidFields((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
     }
   }
 
   return (
     <section>
-      <h2 style={sectionHeadingStyle}>Process Node</h2>
+      <h2 style={panelSectionHeadingStyle}>Process Node</h2>
 
-      <div style={fieldGroupStyle}>
-        <label style={labelStyle} htmlFor={`${nodeId}-name`}>
+      <div style={panelFieldGroupStyle}>
+        <label style={panelLabelStyle} htmlFor={`${nodeId}-name`}>
           Name
         </label>
         <input
@@ -162,15 +153,15 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
           type="text"
           value={name}
           onChange={handleNameChange}
-          style={inputStyle}
+          style={panelInputStyle}
           onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
           onBlur={(e) => (e.target.style.outline = 'none')}
         />
       </div>
 
       {NUMERIC_FIELDS.map(({ key, label }) => (
-        <div key={key} style={fieldGroupStyle}>
-          <label style={labelStyle} htmlFor={`${nodeId}-${key}`}>
+        <div key={key} style={panelFieldGroupStyle}>
+          <label style={panelLabelStyle} htmlFor={`${nodeId}-${key}`}>
             {label}
           </label>
           <input
@@ -179,12 +170,114 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
             value={rawValues[key]}
             onChange={(e) => handleNumericChange(key, e.target.value)}
             onBlur={() => handleNumericBlur(key)}
-            style={inputStyle}
+            style={invalidFields[key] ? panelInvalidInputStyle : panelInputStyle}
             onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
             onBlurCapture={(e) => (e.target.style.outline = 'none')}
           />
+          {invalidFields[key] ? (
+            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--color-bottleneck)' }}>
+              {invalidFields[key]}
+            </p>
+          ) : null}
         </div>
       ))}
+    </section>
+  );
+}
+
+// ─── Results Summary ──────────────────────────────────────────────────────────
+
+function fmt(n: number): string {
+  return isFinite(n) ? n.toFixed(2) : 'N/A';
+}
+
+function fmtPct(n: number): string {
+  return isFinite(n) ? (n * 100).toFixed(1) + '%' : 'N/A';
+}
+
+const resultRowStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  fontSize: '13px',
+  marginBottom: '6px',
+} as const;
+
+const resultLabelStyle = {
+  color: 'var(--color-text-secondary)',
+} as const;
+
+const resultValueStyle = {
+  fontWeight: 500,
+  color: 'var(--color-text-primary)',
+} as const;
+
+function ResultsSummary() {
+  const derivedResults = useFlowStore((s) => s.derivedResults);
+  const selectedElement = useFlowStore((s) => s.selectedElement);
+  const nodes = useFlowStore((s) => s.nodes);
+
+  const isEmpty =
+    !derivedResults ||
+    (derivedResults.systemThroughput === 0 &&
+      derivedResults.bottleneckNodeId === null &&
+      Object.keys(derivedResults.nodeResults).length === 0);
+
+  const bottleneckName = derivedResults?.bottleneckNodeId
+    ? (nodes.find((n) => n.id === derivedResults.bottleneckNodeId)?.data as ProcessNodeData)?.name ??
+      '—'
+    : '—';
+
+  const selectedNodeResult =
+    selectedElement?.kind === 'node' && selectedElement.nodeType === 'process' && derivedResults
+      ? derivedResults.nodeResults[selectedElement.id] ?? null
+      : null;
+
+  return (
+    <section>
+      <h2 style={panelSectionHeadingStyle}>Results</h2>
+      {isEmpty ? (
+        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+          Build a complete model to see results.
+        </p>
+      ) : (
+        <>
+          <div style={resultRowStyle}>
+            <span style={resultLabelStyle}>System Throughput</span>
+            <span style={resultValueStyle}>{fmt(derivedResults!.systemThroughput)}</span>
+          </div>
+          <div style={resultRowStyle}>
+            <span style={resultLabelStyle}>Bottleneck</span>
+            <span style={resultValueStyle}>{bottleneckName}</span>
+          </div>
+          {selectedNodeResult && (
+            <>
+              <p
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--color-text-label)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  margin: '10px 0 6px 0',
+                }}
+              >
+                Selected Node
+              </p>
+              <div style={resultRowStyle}>
+                <span style={resultLabelStyle}>Required Throughput</span>
+                <span style={resultValueStyle}>{fmt(selectedNodeResult.requiredThroughput)}</span>
+              </div>
+              <div style={resultRowStyle}>
+                <span style={resultLabelStyle}>Effective Capacity</span>
+                <span style={resultValueStyle}>{fmt(selectedNodeResult.effectiveCapacity)}</span>
+              </div>
+              <div style={resultRowStyle}>
+                <span style={resultLabelStyle}>Utilization</span>
+                <span style={resultValueStyle}>{fmtPct(selectedNodeResult.utilization)}</span>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -222,7 +315,7 @@ function SelectionContent() {
   const node = nodes.find((n) => n.id === selectedElement.id);
   if (!node || node.type !== 'process') return null;
 
-  return <ProcessForm nodeId={node.id} data={node.data as ProcessNodeData} />;
+  return <ProcessForm key={node.id} nodeId={node.id} data={node.data as ProcessNodeData} />;
 }
 
 // ─── Panel Root ───────────────────────────────────────────────────────────────
@@ -231,7 +324,9 @@ export default function PropertiesPanel() {
   return (
     <div style={{ padding: '16px' }}>
       <GlobalDemandSection />
-      <hr style={dividerStyle} />
+      <hr style={panelDividerStyle} />
+      <ResultsSummary />
+      <hr style={panelDividerStyle} />
       <SelectionContent />
     </div>
   );
