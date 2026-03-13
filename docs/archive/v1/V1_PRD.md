@@ -11,10 +11,10 @@ Provide a visual, lightweight SaaS tool to model deterministic capacity flow pro
 
 ## 3. Core Workflow
 1. **Model:** User drags and drops nodes onto a visual canvas to represent process steps and connects them to define the flow of materials/work.
-2. **Configure:** User clicks each node to configure its capacity, cycle time, and material conversion rates.
+2. **Configure:** User clicks each node to configure its capacity, throughput rate, and material conversion rates.
 3. **Input Demand:** User enters one global target demand linked to the Sink output material (e.g., units per week or month).
 4. **Analyze:** System instantly calculates the end-to-end deterministic flow, highlighting the bottleneck, throughput, and utilization per node.
-5. **Scenario Test:** User duplicates the model or tweaks node values to test "what-if" scenarios (e.g., adding a machine, reducing cycle time) and compares results.
+5. **Scenario Test:** User duplicates the model or tweaks node values to test "what-if" scenarios (e.g., adding a machine, increasing throughput rate) and compares results.
 
 ## 4. V1 Scope
 V1 focuses purely on steady-state, deterministic capacity calculation for a single product flow.
@@ -66,20 +66,20 @@ Ports are node-type specific:
 ## 8. Node Configuration
 When a Process Node is selected, the following parameters can be configured:
 - **Name:** Label for the step.
-- **Cycle Time:** Time taken to process one unit (e.g., minutes per unit).
+- **Throughput Rate:** Number of units processed per hour (e.g., units per hour).
 - **Available Time:** Total working time available per period (e.g., hours per week, minus planned downtime).
 - **Yield:** Percentage of good units produced (e.g., 95%).
 - **Number of Resources:** Parallel machines or workers at this step (multiplier for capacity).
 
-**Canonical Parameter Set:** Name, Cycle Time, Available Time, Yield, Number of Resources. (Agents must use these exact terms to refer to Process Node properties).
+**Canonical Parameter Set:** Name, Throughput Rate, Available Time, Yield, Number of Resources. (Agents must use these exact terms to refer to Process Node properties).
 
 **System Time Unit:**
 All calculations must use **hours as the internal base unit**.
-Inputs like cycle time, demand period, and available time should be converted to hours internally.
+Inputs like throughput rate and available time should be consistent with this hourly base.
 
 **Effective Capacity Formula:**
 Effective Capacity =
-(Available Time / Cycle Time) × Number of Resources × Yield
+Throughput Rate × Available Time × Number of Resources × Yield
 
 This represents **maximum good output per period**.
 
@@ -105,14 +105,15 @@ Demand is defined **one time globally**, and is always tied to the **Sink output
 - The system must always calculate upstream requirements from this final demand.
 
 ## 11. Results and Outputs
-For each node, the system calculates and displays:
+For each node, the system calculates and displays the following (all results are in **units per period**, consistent with the demand and available time):
 - **Required Throughput:** What is needed to meet the propagated demand.
 - **Effective Capacity:** The theoretical maximum the node can produce independently.
 - **Utilization (%):** Required Throughput / Effective Capacity.
-- **Bottleneck Indicator:** The node with the highest utilization (or utilization > 100%) is visually highlighted (e.g., outlined in red).
+- **Bottleneck Indicator:** The node with the highest utilization is visually highlighted. Nodes above 95% utilization are shown in red and display a warning triangle.
+- **Visual Shortening:** Large numbers on the canvas are shortened (e.g., 150k instead of 150,000) for visual clarity.
 
 **System Throughput Definition:**
-System Throughput is calculated in two steps:
+System Throughput is calculated in two steps (result in **units per period**):
 1. Normalize every node's effective capacity to **Sink output units** using conversion and yield relationships.
 2. Take the **minimum normalized capacity** across nodes.
 
@@ -138,7 +139,7 @@ The tool follows a "Data-First, Interface-Second" philosophy to ensure clarity a
 
 *   **Visual Style:** Modern, clean, and technical SaaS aesthetic (inspired by Stripe). Avoids "legacy enterprise" clutter.
 *   **Color Palette:** White and light gray backgrounds with Indigo (`#6366F1`) as the primary action color.
-*   **Status Indicators:** Color-coded utilization (Green < 80%, Amber 80-100%, Red > 100% for bottlenecks).
+*   **Status Indicators:** Color-coded utilization (Green below 85%, Orange from 85% through 95%, Red above 95%). Nodes above 95% utilization display a warning triangle, and the bottleneck remains visually highlighted.
 *   **Typography:** Clean sans-serif (Inter) with monospace (JetBrains Mono) for numerical data.
 *   **Components:** Rounded corners (8px), subtle shadows, and a strict 8px spacing grid.
 *   **Canvas Experience:** Light dot-grid background, smooth node connections, and instant visual feedback on parameter changes.
