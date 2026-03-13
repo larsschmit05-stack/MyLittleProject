@@ -212,16 +212,45 @@ The plan is intentionally strict:
 ---
 
 ## Step 10: Local Scenario Duplication
-**Goal:** Support the minimum V1 scenario workflow before persistence.
+**Goal:** Allow users to create "What-If" scenarios by duplicating the current model in the local session. This enables testing different configurations (e.g., adding a resource) without losing the original state.
 
 **What will be built:**
-- Duplicate current model action in local app state.
-- New duplicated model starts with copied nodes, edges, and demand.
-- Duplicated model can be edited independently in the session.
+1.  **Store Enhancements:**
+    -   `scenarios: Scenario[]` state to track multiple models locally.
+    -   `activeScenarioId: string` to identify the current working model.
+    -   `duplicateActiveScenario(name: string)` action to clone the current state.
+    -   `switchScenario(id: string)` action to load a different scenario into the canvas.
+    -   `deleteScenario(id: string)` action to remove local copies.
+2.  **Scenario Management UI:**
+    -   A "Scenario Selector" in the right sidebar.
+    -   "Duplicate" button to trigger the clone action.
+    -   Visual indication of which scenario is currently active.
+3.  **Auto-Sync Logic:**
+    -   Ensure that any change to the active canvas (nodes, edges, demand) is automatically mirrored in the corresponding entry in the `scenarios` array.
+
+**Detailed Implementation Steps for Claude:**
+1.  **Types:** Update `types/flow.ts` to include a `Scenario` interface: `{ id: string; name: string; model: SerializedModel }`.
+2.  **Store Initialization:**
+    -   Initialize `scenarios` with a default "Baseline" scenario if empty.
+    -   Set `activeScenarioId` to this baseline.
+3.  **Actions:**
+    -   Implement `duplicateActiveScenario`: Serialize the current live state, generate a new UUID, and push to the array.
+    -   Implement `switchScenario`: Replace the store's `nodes`, `edges`, and `globalDemand` with the target scenario's model and trigger `calculateFlow`.
+    -   Implement `updateActiveScenario`: A private internal action (or side-effect in existing setters) to keep the `scenarios` array in sync with live edits.
+4.  **UI:**
+    -   Create `components/editor/ScenarioManager.tsx`.
+    -   Add a simple text input or "Duplicate" button that prompts for a name.
+    -   Add a list of scenarios with "Switch" and "Delete" icons.
 
 **Success Criteria:**
-- User can duplicate a model and change the copy without affecting the original.
-- Scenario testing works without requiring side-by-side comparison.
+- User can create "Scenario A" and "Scenario B".
+- Modifying "Scenario B" (e.g., doubling resources) shows a new bottleneck without changing "Scenario A".
+- Switching back to "Scenario A" restores the original values and results.
+
+**Risks & Mitigations:**
+- **Local Persistence Risk:** Scenarios are lost on page refresh. *Mitigation: Add a warning or implement basic `localStorage` sync if easy, otherwise wait for Step 11.*
+- **State Drift:** Live edits might not save to the scenario list if not handled carefully. *Mitigation: Use a centralized `syncActiveScenario` helper called within all state-mutating actions (addNode, updateNodeData, etc.).*
+- **Scenario Bloat:** Too many local scenarios might clutter the UI. *Mitigation: Limit to a simple vertical list for V1.*
 
 ---
 
