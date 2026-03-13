@@ -71,3 +71,9 @@ export interface SerializedModel {
   }>;
   globalDemand: number;
 }
+
+export interface Scenario {
+  id: string;
+  name: string;
+  model: SerializedModel;
+}

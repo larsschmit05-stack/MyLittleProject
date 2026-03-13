@@ -18,6 +18,7 @@ import type {
   SerializedModel,
   ProcessNodeData,
   SerializedNode,
+  Scenario,
 } from '../types/flow';
 
 interface FlowState {
@@ -26,6 +27,8 @@ interface FlowState {
   selectedElement: SelectedElement;
   globalDemand: number;
   derivedResults: DerivedResults;
+  scenarios: Scenario[];
+  activeScenarioId: string;
 }
 
 interface FlowActions {
@@ -38,6 +41,9 @@ interface FlowActions {
   selectElement: (element: SelectedElement) => void;
   clearSelection: () => void;
   getSerializedModel: () => SerializedModel;
+  duplicateActiveScenario: (name: string) => void;
+  switchScenario: (id: string) => void;
+  deleteScenario: (id: string) => void;
 }
 
 type FlowStore = FlowState & FlowActions;
@@ -102,94 +108,152 @@ function serializeNode(node: FlowNode): SerializedNode {
   throw new Error(`Cannot serialize node with unsupported type: ${String(node.type)}`);
 }
 
-const useFlowStore = create<FlowStore>((set, get) => ({
-  nodes: [],
-  edges: [],
-  selectedElement: null,
-  globalDemand: 0,
-  derivedResults: null,
+const BASELINE_ID = 'baseline';
+const BASELINE_MODEL: SerializedModel = { nodes: [], edges: [], globalDemand: 0 };
 
-  onNodesChange: (changes) => {
-    const currentState = get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nextNodes = applyNodeChanges(changes, currentState.nodes as any) as FlowNode[];
-
+const useFlowStore = create<FlowStore>((set, get) => {
+  const syncActiveScenario = () => {
+    const { activeScenarioId, scenarios } = get();
+    const model = get().getSerializedModel();
     set({
-      nodes: nextNodes,
-      selectedElement: reconcileSelection(
-        currentState.selectedElement,
-        nextNodes,
-        currentState.edges
+      scenarios: scenarios.map((s) =>
+        s.id === activeScenarioId ? { ...s, model } : s
       ),
     });
+  };
 
-    if (changes.some((c) => c.type === 'remove')) {
+  return {
+    nodes: [],
+    edges: [],
+    selectedElement: null,
+    globalDemand: 0,
+    derivedResults: null,
+    scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
+    activeScenarioId: BASELINE_ID,
+
+    onNodesChange: (changes) => {
+      const currentState = get();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nextNodes = applyNodeChanges(changes, currentState.nodes as any) as FlowNode[];
+
+      set({
+        nodes: nextNodes,
+        selectedElement: reconcileSelection(
+          currentState.selectedElement,
+          nextNodes,
+          currentState.edges
+        ),
+      });
+
+      if (changes.some((c) => c.type === 'remove')) {
+        set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      }
+
+      syncActiveScenario();
+    },
+
+    onEdgesChange: (changes) => {
+      const currentState = get();
+      const nextEdges = applyEdgeChanges(changes, currentState.edges);
+
+      set({
+        edges: nextEdges,
+        selectedElement: reconcileSelection(
+          currentState.selectedElement,
+          currentState.nodes,
+          nextEdges
+        ),
+      });
+
+      if (changes.some((c) => c.type === 'add' || c.type === 'remove')) {
+        set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      }
+
+      syncActiveScenario();
+    },
+
+    onConnect: (connection) => {
+      const { nodes, edges } = get();
+      if (!checkConnection(connection, nodes, edges)) return;
+      set({ edges: addEdge(connection, edges) });
       set({ derivedResults: calculateFlow(get().getSerializedModel()) });
-    }
-  },
+      syncActiveScenario();
+    },
 
-  onEdgesChange: (changes) => {
-    const currentState = get();
-    const nextEdges = applyEdgeChanges(changes, currentState.edges);
-
-    set({
-      edges: nextEdges,
-      selectedElement: reconcileSelection(
-        currentState.selectedElement,
-        currentState.nodes,
-        nextEdges
-      ),
-    });
-
-    if (changes.some((c) => c.type === 'add' || c.type === 'remove')) {
+    addNode: (node) => {
+      set({ nodes: [...get().nodes, node] });
       set({ derivedResults: calculateFlow(get().getSerializedModel()) });
-    }
-  },
+      syncActiveScenario();
+    },
 
-  onConnect: (connection) => {
-    const { nodes, edges } = get();
-    if (!checkConnection(connection, nodes, edges)) return;
-    set({ edges: addEdge(connection, edges) });
-    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
-  },
+    updateNodeData: (nodeId, data) => {
+      set({
+        nodes: get().nodes.map((n) =>
+          n.id === nodeId && n.type === 'process'
+            ? { ...n, data: { ...n.data, ...data } }
+            : n
+        ) as FlowNode[],
+      });
+      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      syncActiveScenario();
+    },
 
-  addNode: (node) => {
-    set({ nodes: [...get().nodes, node] });
-    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
-  },
+    setGlobalDemand: (demand) => {
+      set({ globalDemand: demand });
+      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      syncActiveScenario();
+    },
 
-  updateNodeData: (nodeId, data) => {
-    set({
-      nodes: get().nodes.map((node) =>
-        node.id === nodeId && node.type === 'process'
-          ? { ...node, data: { ...node.data, ...data } }
-          : node
-      ) as FlowNode[],
-    });
-    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
-  },
+    selectElement: (element) => {
+      set({ selectedElement: element });
+    },
 
-  setGlobalDemand: (demand) => {
-    set({ globalDemand: demand });
-    set({ derivedResults: calculateFlow(get().getSerializedModel()) });
-  },
+    clearSelection: () => {
+      set({ selectedElement: null });
+    },
 
-  selectElement: (element) => {
-    set({ selectedElement: element });
-  },
+    getSerializedModel: () => {
+      const { nodes, edges, globalDemand } = get();
+      return {
+        nodes: nodes.map(serializeNode),
+        edges: edges.map(({ id, source, target }) => ({ id, source, target })),
+        globalDemand,
+      };
+    },
 
-  clearSelection: () => {
-    set({ selectedElement: null });
-  },
+    duplicateActiveScenario: (name) => {
+      const model = get().getSerializedModel();
+      const newScenario: Scenario = { id: crypto.randomUUID(), name, model };
+      set({ scenarios: [...get().scenarios, newScenario] });
+    },
 
-  getSerializedModel: () => {
-    const { nodes, edges, globalDemand } = get();
-    return {
-      nodes: nodes.map(serializeNode),
-      edges: edges.map(({ id, source, target }) => ({ id, source, target })),
-      globalDemand,
-    };
-  },
-}));
+    switchScenario: (id) => {
+      const target = get().scenarios.find((s) => s.id === id);
+      if (!target) return;
+      // Deep-clone via JSON round-trip to prevent nested-object reference sharing
+      const model: SerializedModel = JSON.parse(JSON.stringify(target.model));
+      const nextNodes = model.nodes.map((n) => ({ ...n })) as FlowNode[];
+      const nextEdges = model.edges.map((e) => ({ ...e }));
+      set({
+        nodes: nextNodes,
+        edges: nextEdges,
+        globalDemand: model.globalDemand,
+        activeScenarioId: id,
+        selectedElement: null,
+        derivedResults: calculateFlow(model),
+      });
+    },
+
+    deleteScenario: (id) => {
+      const { scenarios, activeScenarioId } = get();
+      if (scenarios.length <= 1) return;
+      const next = scenarios.filter((s) => s.id !== id);
+      if (id === activeScenarioId) {
+        get().switchScenario(next[0].id);
+      }
+      set({ scenarios: get().scenarios.filter((s) => s.id !== id) });
+    },
+  };
+});
 
 export default useFlowStore;

@@ -12,6 +12,7 @@ import {
   panelFieldGroupStyle,
   panelDividerStyle,
 } from './styles';
+import ScenarioManager from './ScenarioManager';
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
 
@@ -323,6 +324,8 @@ function SelectionContent() {
 export default function PropertiesPanel() {
   return (
     <div style={{ padding: '16px' }}>
+      <ScenarioManager />
+      <hr style={panelDividerStyle} />
       <GlobalDemandSection />
       <hr style={panelDividerStyle} />
       <ResultsSummary />
