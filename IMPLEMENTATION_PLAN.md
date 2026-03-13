@@ -171,7 +171,7 @@ The plan is intentionally strict:
 
 ---
 
-## Step 8: Live Results In The Editor
+## Step 8: Live Results In The Editor (Completed)
 **Goal:** Surface the calculation outputs in the main workflow.
 
 **What will be built:**
@@ -195,14 +195,14 @@ The plan is intentionally strict:
 
 ---
 
-## Step 9: Visual Bottleneck Feedback
+## Step 9: Visual Bottleneck Feedback (Completed)
 **Goal:** Make constraints visible without adding unnecessary UI complexity.
 
 **What will be built:**
 - Node-level utilization status styling:
-  - Green for under 80%
-  - Amber for 80% to 100%
-  - Red for over 100% or bottleneck
+  - Green below 85%
+  - Orange from 85% through 95%
+  - Red above 95% or bottleneck
 - Clear visual highlight for the bottleneck node.
 
 **Success Criteria:**

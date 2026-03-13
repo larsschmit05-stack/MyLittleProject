@@ -109,7 +109,8 @@ For each node, the system calculates and displays the following (all results are
 - **Required Throughput:** What is needed to meet the propagated demand.
 - **Effective Capacity:** The theoretical maximum the node can produce independently.
 - **Utilization (%):** Required Throughput / Effective Capacity.
-- **Bottleneck Indicator:** The node with the highest utilization (or utilization > 100%) is visually highlighted (e.g., outlined in red).
+- **Bottleneck Indicator:** The node with the highest utilization is visually highlighted. Nodes above 95% utilization are shown in red and display a warning triangle.
+- **Visual Shortening:** Large numbers on the canvas are shortened (e.g., 150k instead of 150,000) for visual clarity.
 
 **System Throughput Definition:**
 System Throughput is calculated in two steps (result in **units per period**):
@@ -138,7 +139,7 @@ The tool follows a "Data-First, Interface-Second" philosophy to ensure clarity a
 
 *   **Visual Style:** Modern, clean, and technical SaaS aesthetic (inspired by Stripe). Avoids "legacy enterprise" clutter.
 *   **Color Palette:** White and light gray backgrounds with Indigo (`#6366F1`) as the primary action color.
-*   **Status Indicators:** Color-coded utilization (Green < 80%, Amber 80-100%, Red > 100% for bottlenecks).
+*   **Status Indicators:** Color-coded utilization (Green below 85%, Orange from 85% through 95%, Red above 95%). Nodes above 95% utilization display a warning triangle, and the bottleneck remains visually highlighted.
 *   **Typography:** Clean sans-serif (Inter) with monospace (JetBrains Mono) for numerical data.
 *   **Components:** Rounded corners (8px), subtle shadows, and a strict 8px spacing grid.
 *   **Canvas Experience:** Light dot-grid background, smooth node connections, and instant visual feedback on parameter changes.

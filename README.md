@@ -36,6 +36,14 @@ Based on demand and process configuration, the system calculates:
 - utilization per process step
 - the process bottleneck
 
+Canvas status thresholds use utilization bands to surface risk quickly:
+
+- green below 85%
+- orange from 85% through 95%
+- red above 95%, with a warning triangle on the node
+
+Numerical values on the canvas are shortened for readability (e.g., 150k instead of 150,000) to ensure the UI remains clean even with large production volumes.
+
 In production systems, the bottleneck determines the maximum throughput of the entire system because the slowest step limits total capacity.
 
 The tool is designed for fast scenario analysis: users can quickly modify process parameters and immediately see the impact on the system.
