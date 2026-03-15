@@ -235,6 +235,12 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
   const order = topologicalSort(model.nodes, model.edges);
   if (order === null) return EMPTY_RESULT;
 
+  // Reject graphs where any process node is unreachable via real edges (orphaned subgraph).
+  const orderSet = new Set(order);
+  for (const node of model.nodes) {
+    if (node.type === 'process' && !orderSet.has(node.id)) return EMPTY_RESULT;
+  }
+
   const sinkNodes = model.nodes.filter((n) => n.type === 'sink');
   if (sinkNodes.length !== 1) return EMPTY_RESULT;
   const sinkNode = sinkNodes[0];
