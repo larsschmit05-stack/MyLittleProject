@@ -247,23 +247,24 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     }
   }
 
-  // Split nodes: process nodes with ≥2 outgoing real edges must have valid splitRatios summing to 100% ± 1%
-  for (const pNode of processNodes) {
-    const outgoingReal = realEdges.filter(e => e.source === pNode.id);
-    if (outgoingReal.length >= 2) {
-      const ratios = outgoingReal.map(e => e.data?.splitRatio ?? 0);
+  // Split nodes: any source/process node with ≥2 total outgoing edges (real + scrap) must have
+  // splitRatios on ALL outgoing edges summing to 100% ± 1%
+  const outputNodes = nodes.filter(n => n.type === 'source' || n.type === 'process');
+  for (const node of outputNodes) {
+    const allOutgoing = edges.filter(e => e.source === node.id);
+    if (allOutgoing.length >= 2) {
+      const ratios = allOutgoing.map(e => e.data?.splitRatio ?? 0);
       const sum = ratios.reduce((a, b) => a + b, 0);
       const hasMissing = ratios.some(r => r === 0);
       const isOutOfRange = sum < 99 || sum > 101;
+      const name = node.type === 'process'
+        ? ((node.data as ProcessNodeData)?.name ?? node.id)
+        : ((node.data as Record<string, unknown>)?.label as string ?? node.id);
 
       if (hasMissing) {
-        const data = pNode.data as ProcessNodeData;
-        const name = data?.name ?? pNode.id;
         errors.push(`Split node "${name}" has missing split ratios`);
         categories.push('invalid_ratio_sum');
       } else if (isOutOfRange) {
-        const data = pNode.data as ProcessNodeData;
-        const name = data?.name ?? pNode.id;
         errors.push(`Split node "${name}" has ratios summing to ${sum.toFixed(1)}%, expected 100% ± 1%`);
         categories.push('invalid_ratio_sum');
       }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import useFlowStore from '../../store/useFlowStore';
-import type { ProcessNodeData } from '../../types/flow';
+import type { ProcessNodeData, SourceNodeData } from '../../types/flow';
 import { isProcessValueValid } from '../../lib/flow/validation';
 import {
   panelLabelStyle,
@@ -70,7 +70,7 @@ interface ProcessFormProps {
   data: ProcessNodeData;
 }
 
-type NumericField = keyof Omit<ProcessNodeData, 'name'>;
+type NumericField = 'throughputRate' | 'availableTime' | 'yield' | 'numberOfResources' | 'conversionRatio';
 
 const FIELD_HELP_TEXT: Record<NumericField, string> = {
   throughputRate: 'Throughput Rate must be greater than 0.',
@@ -88,6 +88,68 @@ const NUMERIC_FIELDS: { key: NumericField; label: string }[] = [
   { key: 'conversionRatio', label: 'Conversion Ratio' },
 ];
 
+// ─── BOM Section ──────────────────────────────────────────────────────────────
+
+function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData }) {
+  const edges = useFlowStore((s) => s.edges);
+  const nodes = useFlowStore((s) => s.nodes);
+  const updateNodeData = useFlowStore((s) => s.updateNodeData);
+
+  const incomingReal = edges.filter((e) => e.target === nodeId && !e.data?.isScrap);
+  if (incomingReal.length < 2) return null;
+
+  return (
+    <div>
+      <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: '16px 0' }} />
+      <h3
+        style={{
+          fontSize: '12px',
+          fontWeight: 500,
+          color: 'var(--color-text-label)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          margin: '0 0 12px 0',
+        }}
+      >
+        BOM Ratios (units of input per output)
+      </h3>
+      {incomingReal.map((edge) => {
+        const sourceNode = nodes.find((n) => n.id === edge.source);
+        const sourceName =
+          sourceNode?.type === 'process'
+            ? (sourceNode.data as ProcessNodeData).name
+            : sourceNode?.type === 'source'
+              ? (sourceNode.data as SourceNodeData).label
+              : edge.source;
+        const currentValue = data.bomRatios?.[edge.id] ?? 1;
+
+        return (
+          <div key={edge.id} style={panelFieldGroupStyle}>
+            <label style={panelLabelStyle}>{sourceName}</label>
+            <input
+              type="number"
+              defaultValue={currentValue}
+              min={0.001}
+              step={0.1}
+              style={panelInputStyle}
+              onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+              onBlurCapture={(e) => (e.target.style.outline = 'none')}
+              onChange={(e) => {
+                const n = parseFloat(e.target.value);
+                if (isFinite(n) && n > 0) {
+                  updateNodeData(nodeId, {
+                    bomRatios: { ...data.bomRatios, [edge.id]: n },
+                  });
+                }
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ProcessForm({ nodeId, data }: ProcessFormProps) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
@@ -100,6 +162,7 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
     conversionRatio: String(data.conversionRatio),
   });
   const [invalidFields, setInvalidFields] = useState<Partial<Record<NumericField, string>>>({});
+  const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
@@ -139,6 +202,12 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
         return next;
       });
     }
+  }
+
+  function handleOutputMaterialChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value;
+    setOutputMaterial(value);
+    updateNodeData(nodeId, { outputMaterial: value || undefined });
   }
 
   return (
@@ -182,6 +251,189 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
           ) : null}
         </div>
       ))}
+
+      <BomSection nodeId={nodeId} data={data} />
+
+      <div style={{ ...panelFieldGroupStyle, marginTop: '16px' }}>
+        <label style={panelLabelStyle} htmlFor={`${nodeId}-outputMaterial`}>
+          Output Material (optional)
+        </label>
+        <input
+          id={`${nodeId}-outputMaterial`}
+          type="text"
+          value={outputMaterial}
+          onChange={handleOutputMaterialChange}
+          style={panelInputStyle}
+          placeholder="e.g. Widget A"
+          onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+          onBlur={(e) => (e.target.style.outline = 'none')}
+        />
+      </div>
+    </section>
+  );
+}
+
+// ─── Source Form ──────────────────────────────────────────────────────────────
+
+function SourceForm({ nodeId, data }: { nodeId: string; data: SourceNodeData }) {
+  const updateSourceNodeData = useFlowStore((s) => s.updateSourceNodeData);
+  const [label, setLabel] = useState(data.label);
+  const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
+
+  function handleLabelChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value;
+    setLabel(value);
+    updateSourceNodeData(nodeId, { label: value });
+  }
+
+  function handleOutputMaterialChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value;
+    setOutputMaterial(value);
+    updateSourceNodeData(nodeId, { outputMaterial: value || undefined });
+  }
+
+  return (
+    <section>
+      <h2 style={panelSectionHeadingStyle}>Source Node</h2>
+
+      <div style={panelFieldGroupStyle}>
+        <label style={panelLabelStyle} htmlFor={`${nodeId}-label`}>
+          Label
+        </label>
+        <input
+          id={`${nodeId}-label`}
+          type="text"
+          value={label}
+          onChange={handleLabelChange}
+          style={panelInputStyle}
+          onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+          onBlur={(e) => (e.target.style.outline = 'none')}
+        />
+      </div>
+
+      <div style={panelFieldGroupStyle}>
+        <label style={panelLabelStyle} htmlFor={`${nodeId}-outputMaterial`}>
+          Output Material (optional)
+        </label>
+        <input
+          id={`${nodeId}-outputMaterial`}
+          type="text"
+          value={outputMaterial}
+          onChange={handleOutputMaterialChange}
+          style={panelInputStyle}
+          placeholder="e.g. Raw Material"
+          onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+          onBlur={(e) => (e.target.style.outline = 'none')}
+        />
+      </div>
+    </section>
+  );
+}
+
+// ─── Edge Form ────────────────────────────────────────────────────────────────
+
+function EdgeForm({ edgeId }: { edgeId: string }) {
+  const edges = useFlowStore((s) => s.edges);
+  const nodes = useFlowStore((s) => s.nodes);
+  const updateEdgeData = useFlowStore((s) => s.updateEdgeData);
+
+  const edge = edges.find((e) => e.id === edgeId);
+
+  // useState must be called unconditionally (rules of hooks)
+  const [rawSplitRatio, setRawSplitRatio] = useState(String(edge?.data?.splitRatio ?? ''));
+
+  if (!edge) return null;
+
+  const sourceNode = nodes.find((n) => n.id === edge.source);
+  const targetNode = nodes.find((n) => n.id === edge.target);
+
+  function getNodeName(node: typeof sourceNode): string {
+    if (!node) return '?';
+    if (node.type === 'process') return (node.data as ProcessNodeData).name;
+    if (node.type === 'source') return (node.data as SourceNodeData).label;
+    return node.type ?? '?';
+  }
+
+  const sourceName = getNodeName(sourceNode);
+  const targetName = getNodeName(targetNode);
+
+  const sourceOutgoingCount = edges.filter((e) => e.source === edge.source).length;
+  const showSplitRatio = sourceOutgoingCount >= 2;
+
+  const isScrap = edge.data?.isScrap === true;
+
+  function handleScrapToggle() {
+    updateEdgeData(edgeId, { isScrap: !isScrap });
+  }
+
+  function handleSplitRatioChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const str = e.target.value;
+    setRawSplitRatio(str);
+    const n = parseFloat(str);
+    if (isFinite(n) && n >= 0 && n <= 100) {
+      updateEdgeData(edgeId, { splitRatio: n });
+    }
+  }
+
+  function handleSplitRatioBlur() {
+    const n = parseFloat(rawSplitRatio);
+    if (!isFinite(n) || n < 0 || n > 100) {
+      setRawSplitRatio(String(edge.data?.splitRatio ?? ''));
+    }
+  }
+
+  return (
+    <section>
+      <h2 style={panelSectionHeadingStyle}>Edge</h2>
+      <p
+        style={{
+          fontSize: '13px',
+          color: 'var(--color-text-secondary)',
+          marginBottom: '16px',
+        }}
+      >
+        {sourceName} → {targetName}
+      </p>
+
+      <div style={{ ...panelFieldGroupStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <input
+          id={`${edgeId}-scrap`}
+          type="checkbox"
+          checked={isScrap}
+          onChange={handleScrapToggle}
+          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+        />
+        <label
+          htmlFor={`${edgeId}-scrap`}
+          style={{ ...panelLabelStyle, marginBottom: 0, cursor: 'pointer' }}
+        >
+          Scrap edge (excluded from demand propagation)
+        </label>
+      </div>
+
+      {showSplitRatio && (
+        <div style={panelFieldGroupStyle}>
+          <label style={panelLabelStyle} htmlFor={`${edgeId}-splitRatio`}>
+            Split Ratio (%)
+          </label>
+          <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+            Percentage of output routed along this edge. All real outputs from the same node should sum to 100%.
+          </p>
+          <input
+            id={`${edgeId}-splitRatio`}
+            type="number"
+            value={rawSplitRatio}
+            min={0}
+            max={100}
+            step={1}
+            onChange={handleSplitRatioChange}
+            onBlur={handleSplitRatioBlur}
+            style={panelInputStyle}
+            onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+            onBlurCapture={(e) => (e.target.style.outline = 'none')}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -298,17 +550,19 @@ function SelectionContent() {
   }
 
   if (selectedElement.kind === 'edge') {
-    return (
-      <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)' }}>
-        Edges have no configurable parameters in V1.
-      </p>
-    );
+    return <EdgeForm key={selectedElement.id} edgeId={selectedElement.id} />;
   }
 
-  if (selectedElement.nodeType !== 'process') {
+  if (selectedElement.nodeType === 'source') {
+    const node = nodes.find((n) => n.id === selectedElement.id);
+    if (!node || node.type !== 'source') return null;
+    return <SourceForm key={node.id} nodeId={node.id} data={node.data as SourceNodeData} />;
+  }
+
+  if (selectedElement.nodeType === 'sink') {
     return (
       <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)' }}>
-        Source and Sink nodes have no configurable parameters in V1.
+        Sink nodes have no configurable parameters.
       </p>
     );
   }

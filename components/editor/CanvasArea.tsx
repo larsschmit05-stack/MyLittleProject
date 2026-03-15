@@ -13,6 +13,7 @@ import ReactFlow, {
 import SourceNode from './nodes/SourceNode';
 import ProcessNode from './nodes/ProcessNode';
 import SinkNode from './nodes/SinkNode';
+import ScrapAwareEdge from './edges/ScrapAwareEdge';
 import { isValidConnection as checkConnection, validateGraph } from '../../lib/flow/validation';
 import useFlowStore from '../../store/useFlowStore';
 import { useCanvasInteractions, SNAP_GRID } from './useCanvasInteractions';
@@ -21,6 +22,10 @@ const nodeTypes = {
   source: SourceNode,
   process: ProcessNode,
   sink: SinkNode,
+};
+
+const edgeTypes = {
+  default: ScrapAwareEdge,
 };
 
 function FlowCanvas() {
@@ -59,6 +64,8 @@ function FlowCanvas() {
         onDragOver={onDragOver}
         onDrop={onDrop}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={{ selectable: true }}
         snapToGrid
         snapGrid={SNAP_GRID}
         fitView

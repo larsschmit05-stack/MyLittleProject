@@ -151,7 +151,7 @@ describe('validateGraph — valid graphs', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('scrap edge to dead-end node (no outgoing real) passes', () => {
+  it('scrap edge to dead-end node with valid split ratios (95%+5%) passes', () => {
     const nodes = [
       makeNode('s', 'source'), makeNode('p', 'process'),
       makeNode('sd', 'process', 'ScrapBin'),
@@ -159,8 +159,25 @@ describe('validateGraph — valid graphs', () => {
     ];
     const edges = [
       makeEdge('e1', 's', 'p'),
-      makeEdge('e2', 'p', 'k'),
-      makeEdge('es', 'p', 'sd', true),
+      { id: 'e2', source: 'p', target: 'k', data: { splitRatio: 95 } },
+      { id: 'es', source: 'p', target: 'sd', data: { isScrap: true, splitRatio: 5 } },
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('source node with two real outputs and valid ratios (80%+20%) passes', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p1', 'process'), makeNode('p2', 'process'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      { id: 'e1', source: 's', target: 'p1', data: { splitRatio: 80 } },
+      { id: 'e2', source: 's', target: 'p2', data: { splitRatio: 20 } },
+      makeEdge('e3', 'p1', 'k'),
+      makeEdge('e4', 'p2', 'k'),
     ];
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(true);
@@ -265,6 +282,39 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('invalid_scrap_target');
+  });
+
+  it('source node with two real outputs and missing split ratios → invalid_ratio_sum', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p1', 'process'), makeNode('p2', 'process'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'p1'), // no splitRatio
+      makeEdge('e2', 's', 'p2'), // no splitRatio
+      makeEdge('e3', 'p1', 'k'),
+      makeEdge('e4', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.categories).toContain('invalid_ratio_sum');
+  });
+
+  it('process node with real + scrap edge and no split ratios → invalid_ratio_sum', () => {
+    const nodes = [
+      makeNode('s', 'source'), makeNode('p', 'process'),
+      makeNode('sd', 'process', 'ScrapBin'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'p'),
+      makeEdge('e2', 'p', 'k'),       // no splitRatio
+      makeEdge('es', 'p', 'sd', true), // no splitRatio
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.categories).toContain('invalid_ratio_sum');
   });
 
   it('split node with valid ratios summing to 100% passes', () => {

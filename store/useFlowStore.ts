@@ -45,6 +45,7 @@ interface FlowActions {
   addNode: (node: FlowNode) => void;
   updateNodeData: (nodeId: string, data: Partial<ProcessNodeData>) => void;
   updateSourceNodeData: (nodeId: string, data: Partial<SourceNodeData>) => void;
+  updateEdgeData: (edgeId: string, data: Partial<EdgeData>) => void;
   setGlobalDemand: (demand: number) => void;
   selectElement: (element: SelectedElement) => void;
   clearSelection: () => void;
@@ -250,6 +251,16 @@ const useFlowStore = create<FlowStore>((set, get) => {
             : n
         ) as FlowNode[],
       });
+      syncActiveScenario();
+    },
+
+    updateEdgeData: (edgeId, data) => {
+      set({
+        edges: get().edges.map((e) =>
+          e.id === edgeId ? { ...e, data: { ...e.data, ...data } } : e
+        ),
+      });
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       syncActiveScenario();
     },
 
