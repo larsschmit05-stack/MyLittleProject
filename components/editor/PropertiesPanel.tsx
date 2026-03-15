@@ -96,7 +96,39 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
   const incomingReal = edges.filter((e) => e.target === nodeId && !e.data?.isScrap);
+
+  const [rawValues, setRawValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(incomingReal.map((e) => [e.id, String(data.bomRatios?.[e.id] ?? 1)]))
+  );
+  const [invalidEdges, setInvalidEdges] = useState<Set<string>>(new Set());
+
   if (incomingReal.length < 2) return null;
+
+  function handleChange(edgeId: string, str: string) {
+    setRawValues((prev) => ({ ...prev, [edgeId]: str }));
+    const n = parseFloat(str);
+    if (isFinite(n) && n > 0) {
+      setInvalidEdges((prev) => {
+        const next = new Set(prev);
+        next.delete(edgeId);
+        return next;
+      });
+      updateNodeData(nodeId, { bomRatios: { ...data.bomRatios, [edgeId]: n } });
+    } else {
+      setInvalidEdges((prev) => new Set(prev).add(edgeId));
+    }
+  }
+
+  function handleBlur(edgeId: string) {
+    if (invalidEdges.has(edgeId)) {
+      setRawValues((prev) => ({ ...prev, [edgeId]: String(data.bomRatios?.[edgeId] ?? 1) }));
+      setInvalidEdges((prev) => {
+        const next = new Set(prev);
+        next.delete(edgeId);
+        return next;
+      });
+    }
+  }
 
   return (
     <div>
@@ -108,11 +140,14 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
           color: 'var(--color-text-label)',
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
-          margin: '0 0 12px 0',
+          margin: '0 0 4px 0',
         }}
       >
-        BOM Ratios (units of input per output)
+        Bill of Materials
       </h3>
+      <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+        Units of this input required per 1 unit of output
+      </p>
       {incomingReal.map((edge) => {
         const sourceNode = nodes.find((n) => n.id === edge.source);
         const sourceName =
@@ -121,28 +156,28 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
             : sourceNode?.type === 'source'
               ? (sourceNode.data as SourceNodeData).label
               : edge.source;
-        const currentValue = data.bomRatios?.[edge.id] ?? 1;
+        const isInvalid = invalidEdges.has(edge.id);
+        const currentRaw = rawValues[edge.id] ?? String(data.bomRatios?.[edge.id] ?? 1);
 
         return (
           <div key={edge.id} style={panelFieldGroupStyle}>
-            <label style={panelLabelStyle}>{sourceName}</label>
+            <label style={panelLabelStyle}>From: {sourceName}</label>
             <input
               type="number"
-              defaultValue={currentValue}
+              value={currentRaw}
               min={0.001}
               step={0.1}
-              style={panelInputStyle}
+              style={isInvalid ? panelInvalidInputStyle : panelInputStyle}
               onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
               onBlurCapture={(e) => (e.target.style.outline = 'none')}
-              onChange={(e) => {
-                const n = parseFloat(e.target.value);
-                if (isFinite(n) && n > 0) {
-                  updateNodeData(nodeId, {
-                    bomRatios: { ...data.bomRatios, [edge.id]: n },
-                  });
-                }
-              }}
+              onChange={(e) => handleChange(edge.id, e.target.value)}
+              onBlur={() => handleBlur(edge.id)}
             />
+            {isInvalid && (
+              <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--color-bottleneck)' }}>
+                Ratio must be greater than 0
+              </p>
+            )}
           </div>
         );
       })}
@@ -258,6 +293,9 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
         <label style={panelLabelStyle} htmlFor={`${nodeId}-outputMaterial`}>
           Output Material (optional)
         </label>
+        <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+          What does this node produce? (e.g., &lsquo;Cut Steel&rsquo;, &lsquo;Assembled Unit&rsquo;)
+        </p>
         <input
           id={`${nodeId}-outputMaterial`}
           type="text"
@@ -315,6 +353,9 @@ function SourceForm({ nodeId, data }: { nodeId: string; data: SourceNodeData }) 
         <label style={panelLabelStyle} htmlFor={`${nodeId}-outputMaterial`}>
           Output Material (optional)
         </label>
+        <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+          What raw material does this source provide? (e.g., &lsquo;Raw Steel&rsquo;)
+        </p>
         <input
           id={`${nodeId}-outputMaterial`}
           type="text"

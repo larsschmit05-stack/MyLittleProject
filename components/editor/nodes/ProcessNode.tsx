@@ -68,6 +68,11 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
       )}
       <div style={nodeLabelStyle}>Process</div>
       <div style={{ fontWeight: 600, marginBottom: '4px' }}>{data.name}</div>
+      {data.outputMaterial && (
+        <div style={{ fontSize: '10px', color: 'var(--color-text-label)', marginBottom: '4px' }}>
+          {data.outputMaterial}
+        </div>
+      )}
       
       {nodeResult && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
