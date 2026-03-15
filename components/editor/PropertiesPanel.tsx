@@ -323,7 +323,7 @@ function SelectionContent() {
 
 export default function PropertiesPanel() {
   return (
-    <div style={{ padding: '16px' }}>
+    <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
       <ScenarioManager />
       <hr style={panelDividerStyle} />
       <GlobalDemandSection />

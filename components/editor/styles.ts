@@ -3,7 +3,7 @@ import { CSSProperties } from 'react';
 export const nodeBaseStyle: CSSProperties = {
   background: 'var(--color-bg-primary)',
   borderRadius: '8px',
-  padding: '8px 16px',
+  padding: '8px 12px',
   minWidth: '128px',
   fontSize: '13px',
   fontWeight: 500,
@@ -27,7 +27,6 @@ export const nodeLabelStyle: CSSProperties = {
 };
 
 export const nodeValueStyle: CSSProperties = {
-  fontFamily: 'var(--font-mono)',
   fontSize: '14px',
   fontWeight: 600,
 };
