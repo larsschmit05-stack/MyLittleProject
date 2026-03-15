@@ -4,6 +4,7 @@ import type { EdgeData, ProcessNodeData } from '../../types/flow';
 export type ValidationErrorCategory =
   | 'cycle'
   | 'missing_bom'
+  | 'invalid_ratio_sum'
   | 'invalid_sink_count'
   | 'orphaned_node'
   | 'invalid_scrap_target';
@@ -242,6 +243,29 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
         const name = data?.name ?? pNode.id;
         errors.push(`Merge node "${name}" has missing or invalid BOM ratios`);
         categories.push('missing_bom');
+      }
+    }
+  }
+
+  // Split nodes: process nodes with ≥2 outgoing real edges must have valid splitRatios summing to 100% ± 1%
+  for (const pNode of processNodes) {
+    const outgoingReal = realEdges.filter(e => e.source === pNode.id);
+    if (outgoingReal.length >= 2) {
+      const ratios = outgoingReal.map(e => e.data?.splitRatio ?? 0);
+      const sum = ratios.reduce((a, b) => a + b, 0);
+      const hasMissing = ratios.some(r => r === 0);
+      const isOutOfRange = sum < 99 || sum > 101;
+
+      if (hasMissing) {
+        const data = pNode.data as ProcessNodeData;
+        const name = data?.name ?? pNode.id;
+        errors.push(`Split node "${name}" has missing split ratios`);
+        categories.push('invalid_ratio_sum');
+      } else if (isOutOfRange) {
+        const data = pNode.data as ProcessNodeData;
+        const name = data?.name ?? pNode.id;
+        errors.push(`Split node "${name}" has ratios summing to ${sum.toFixed(1)}%, expected 100% ± 1%`);
+        categories.push('invalid_ratio_sum');
       }
     }
   }

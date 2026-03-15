@@ -142,7 +142,8 @@ describe('validateGraph — valid graphs', () => {
     ];
     const edges = [
       makeEdge('e2', 's1', 'fj'), makeEdge('e3', 's2', 'fj'),
-      makeEdge('e4', 'fj', 'p1'), makeEdge('e5', 'fj', 'p2'),
+      { id: 'e4', source: 'fj', target: 'p1', data: { splitRatio: 95 } },
+      { id: 'e5', source: 'fj', target: 'p2', data: { splitRatio: 5 } },
       makeEdge('e6', 'p1', 'k'), makeEdge('e7', 'p2', 'k'),
     ];
     const result = validateGraph(nodes, edges);
@@ -264,5 +265,65 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('invalid_scrap_target');
+  });
+
+  it('split node with valid ratios summing to 100% passes', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p', 'process'),
+      makeNode('p1', 'process'),
+      makeNode('p2', 'process'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'p'),
+      { id: 'e2', source: 'p', target: 'p1', data: { splitRatio: 80 } },
+      { id: 'e3', source: 'p', target: 'p2', data: { splitRatio: 20 } },
+      makeEdge('e4', 'p1', 'k'),
+      makeEdge('e5', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('split node with ratios summing to 97% → invalid_ratio_sum', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p', 'process'),
+      makeNode('p1', 'process'),
+      makeNode('p2', 'process'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'p'),
+      { id: 'e2', source: 'p', target: 'p1', data: { splitRatio: 80 } },
+      { id: 'e3', source: 'p', target: 'p2', data: { splitRatio: 17 } },
+      makeEdge('e4', 'p1', 'k'),
+      makeEdge('e5', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.categories).toContain('invalid_ratio_sum');
+  });
+
+  it('split node with missing splitRatio → invalid_ratio_sum', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p', 'process'),
+      makeNode('p1', 'process'),
+      makeNode('p2', 'process'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'p'),
+      { id: 'e2', source: 'p', target: 'p1', data: { splitRatio: 80 } },
+      { id: 'e3', source: 'p', target: 'p2', data: {} }, // missing splitRatio
+      makeEdge('e4', 'p1', 'k'),
+      makeEdge('e5', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.categories).toContain('invalid_ratio_sum');
   });
 });
