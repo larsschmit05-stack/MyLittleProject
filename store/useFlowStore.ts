@@ -18,13 +18,15 @@ import type {
   DerivedResults,
   SerializedModel,
   ProcessNodeData,
+  SourceNodeData,
   SerializedNode,
   Scenario,
+  EdgeData,
 } from '../types/flow';
 
 interface FlowState {
   nodes: FlowNode[];
-  edges: Edge[];
+  edges: Edge<EdgeData>[];
   selectedElement: SelectedElement;
   globalDemand: number;
   derivedResults: DerivedResults;
@@ -42,6 +44,7 @@ interface FlowActions {
   onConnect: (connection: Connection) => void;
   addNode: (node: FlowNode) => void;
   updateNodeData: (nodeId: string, data: Partial<ProcessNodeData>) => void;
+  updateSourceNodeData: (nodeId: string, data: Partial<SourceNodeData>) => void;
   setGlobalDemand: (demand: number) => void;
   selectElement: (element: SelectedElement) => void;
   clearSelection: () => void;
@@ -167,13 +170,41 @@ const useFlowStore = create<FlowStore>((set, get) => {
 
     onEdgesChange: (changes) => {
       const currentState = get();
-      const nextEdges = applyEdgeChanges(changes, currentState.edges);
+
+      const removedEdgeIds = new Set(
+        changes.filter(c => c.type === 'remove').map(c => c.id)
+      );
+      let nextNodes = currentState.nodes;
+      if (removedEdgeIds.size > 0) {
+        // Build a per-target map of which edge IDs were removed from that node
+        const removedByTarget = new Map<string, Set<string>>();
+        for (const e of currentState.edges) {
+          if (removedEdgeIds.has(e.id)) {
+            if (!removedByTarget.has(e.target)) removedByTarget.set(e.target, new Set());
+            removedByTarget.get(e.target)!.add(e.id);
+          }
+        }
+        nextNodes = currentState.nodes.map(n => {
+          if (n.type !== 'process') return n;
+          const edgesToRemove = removedByTarget.get(n.id);
+          if (!edgesToRemove) return n;
+          const { bomRatios } = n.data;
+          if (!bomRatios) return n;
+          const cleaned = { ...bomRatios };
+          edgesToRemove.forEach(id => delete cleaned[id]);
+          const next = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+          return { ...n, data: { ...n.data, bomRatios: next } } as FlowNode;
+        });
+      }
+
+      const nextEdges = applyEdgeChanges(changes, currentState.edges) as Edge<EdgeData>[];
 
       set({
+        nodes: nextNodes,
         edges: nextEdges,
         selectedElement: reconcileSelection(
           currentState.selectedElement,
-          currentState.nodes,
+          nextNodes,
           nextEdges
         ),
       });
@@ -211,6 +242,17 @@ const useFlowStore = create<FlowStore>((set, get) => {
       syncActiveScenario();
     },
 
+    updateSourceNodeData: (nodeId, data) => {
+      set({
+        nodes: get().nodes.map((n) =>
+          n.id === nodeId && n.type === 'source'
+            ? { ...n, data: { ...n.data, ...data } }
+            : n
+        ) as FlowNode[],
+      });
+      syncActiveScenario();
+    },
+
     setGlobalDemand: (demand) => {
       set({ globalDemand: demand });
       set({ derivedResults: calculateFlow(get().getSerializedModel()) });
@@ -229,7 +271,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
       const { nodes, edges, globalDemand } = get();
       return {
         nodes: nodes.map(serializeNode),
-        edges: edges.map(({ id, source, target }) => ({ id, source, target })),
+        edges: edges.map(({ id, source, target, data }) => ({ id, source, target, data })),
         globalDemand,
       };
     },

@@ -1,7 +1,12 @@
 import type { Node } from 'reactflow';
 
+export interface EdgeData {
+  isScrap?: boolean;
+}
+
 export interface SourceNodeData {
   label: string;
+  outputMaterial?: string;
 }
 
 export interface SinkNodeData {
@@ -15,6 +20,8 @@ export interface ProcessNodeData {
   yield: number;
   numberOfResources: number;
   conversionRatio: number;
+  bomRatios?: Record<string, number>;
+  outputMaterial?: string;
 }
 
 export type FlowSourceNode = Node<SourceNodeData, 'source'>;
@@ -68,6 +75,7 @@ export interface SerializedModel {
     id: string;
     source: string;
     target: string;
+    data?: EdgeData;
   }>;
   globalDemand: number;
 }
