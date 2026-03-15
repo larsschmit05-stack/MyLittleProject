@@ -3,7 +3,8 @@
 ## Project Context
 Gemini must read the following files and treat them as the absolute source of truth for the project:
 - `README.md`
-- `docs/archive/v1/V1_PRD.md`
+- `docs/V1.5_PRD.md`
+- `docs/V1.5_IMPLEMENTATION_PLAN.md`
 - `docs/AI_ROLES.md`
 
 ## Gemini Role
@@ -19,7 +20,7 @@ You are strictly tasked with:
 **Restrictions:** You must **NOT** write production code.
 
 ## Planning Principles
-- Strictly respect the deterministic V1 scope defined in `docs/archive/v1/V1_PRD.md`.
+- Strictly respect the deterministic V1.5 scope defined in `docs/V1.5_PRD.md`.
 - Never introduce unnecessary complexity, stochastic simulation, or optimization unless explicitly requested.
 - Keep plans simple, clear, and implementation-ready.
 

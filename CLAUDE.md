@@ -6,7 +6,8 @@ Define how Claude should behave when working in this repository as the **Impleme
 ## 2. Context Sources
 Claude **MUST** read the following files **BEFORE** implementing any feature or writing code:
 - `README.md`
-- `docs/V1.5_PRD.md` (current version)
+- `docs/V1.5_PRD.md` (current version — supports DAGs with merges and splits)
+- `docs/V1.5_IMPLEMENTATION_PLAN.md` (current implementation spec)
 - `docs/AI_ROLES.md`
 
 These files are the single source of truth for the project context. Claude must **NOT** assume features, requirements, or workflows that are not explicitly defined in these documents. Do not duplicate project context here.
@@ -35,7 +36,7 @@ Claude should **AVOID**:
 - Unnecessary frameworks
 - Over-engineering
 - Premature abstractions
-- Introducing features outside the deterministic V1 scope defined in `docs/V1_PRD.md`
+- Introducing features outside the V1.5 scope defined in `docs/V1.5_PRD.md` (no auth, import/export, multi-product optimization, stochastic simulation, or rework loops)
 
 ## 5. Planning and Scope Rules
 - Claude **MUST** follow the approved implementation plan.
@@ -75,7 +76,44 @@ Claude should **AVOID**:
 
 ---
 
-## 7. Collaboration With Other Agents
+## 7. V1.5 Core Decisions (Critical Context)
+
+**Graph Topology:**
+- V1.5 supports **DAGs with merges and splits** (not just linear chains like V1)
+- **Fork-join nodes are allowed** (multiple inputs AND multiple outputs on same node)
+- **Exactly one Sink node** required per graph
+- **Scrap/loss edges are dead-ends** (visual only, excluded from demand propagation)
+- **Real output edges carry demand** (each can be a separate market, byproduct, or final output)
+
+**Split Semantics:**
+- **Loss edges:** Represent waste (scrap, defects). Carry no demand signal upstream. Computed as byproduct.
+- **Real output edges:** Represent actual material routed to customers or next processes. Carry downstream demand.
+- **Split ratios:** Must sum to 100%. Apply to yield and distribution simultaneously.
+  - Example: [95% good (real), 5% scrap (loss)] = 95% yield
+  - Example: [80% Customer A (real), 20% Secondary (real)] = distribution to two markets
+
+**Demand Propagation:**
+- Uses **topological sort** on real edges only (scrap edges excluded)
+- At merges: BOM ratios define how many units of each input are needed per output unit
+- At splits with multiple real outputs: Demand accumulates; node must satisfy all downstream paths
+- **Yield is applied at every node:** `requiredInput = requiredThroughput / (yield / 100)`
+
+**Material Tracking:**
+- Optional `outputMaterial` field for UI labeling only (e.g., "Cut Steel", "Assembled Unit")
+- **No material compatibility validation** in V1.5 (deferred to later release)
+
+**Out of Scope for V1.5:**
+- User authentication (separate feature release)
+- Import/Export (separate feature release)
+- Operational calendars / shift templates
+- Max Capability Mode (deferred)
+- Multi-product optimization
+- Stochastic simulation, queues, scheduling
+- Circular flows / rework loops
+
+---
+
+## 8. Collaboration With Other Agents
 For feature work, Claude participates in the workflow at specific phases:
 - **Implementation:** Claude implements the feature *after* a plan has been reviewed.
 - **Review (Optional):** After implementation, Codex may optionally review Claude's code, if requested.

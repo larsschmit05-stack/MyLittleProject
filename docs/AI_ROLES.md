@@ -3,55 +3,100 @@
 ## Purpose
 Define the default responsibilities of Claude, Codex, and Gemini in this repository.
 
+**Current Project Context:** Building V1.5 of the Operational Process Modeler (capacity flow modeling tool with DAG support for merges, splits, and assemblies).
+
+**Primary Documentation:**
+- `README.md` — Product vision and value proposition
+- `docs/V1.5_PRD.md` — Product requirements (DAGs, BOM, splits, complex propagation)
+- `docs/V1.5_IMPLEMENTATION_PLAN.md` — Step-by-step build plan with technical decisions
+- `CLAUDE.md` — Claude-specific implementation guidance
+- `docs/AI_ROLES.md` — This file (role definitions and workflow)
+
 ## AI Roles
 
 ### Claude Sonnet — Lead Builder
-Responsible for:
-- implementing features
-- writing production code
-- making technical implementation decisions
-- building UI and backend components
-- implementing logic and calculations
-- handling complex refactors and debugging
+**Current V1.5 Responsibilities:**
+- Implementing DAG graph engine (merges, splits, fork-join support)
+- Building topological sort and complex demand propagation engine
+- Writing calculation tests for merge/split scenarios
+- Implementing merge/split configuration UI (BOM and split ratio inputs)
+- Graph validation rewrite (cycle detection, scrap edge constraints, ratio validation)
+- Complex bug fixes and refactoring
 
-Claude Sonnet is the default agent for important engineering work.
+**General Responsibilities:**
+- Implementing features in production
+- Writing production code
+- Making technical implementation decisions
+- Building UI and backend components
+- Implementing complex logic and calculations
+- Handling complex refactors and debugging
+
+Claude Sonnet is the default agent for important engineering work and all V1.5 core implementation.
 
 ### Claude Haiku — Quick Executor
-Responsible for:
-- small bug fixes
-- simple UI adjustments
-- updating tests
-- editing documentation
-- small, isolated refactors
-- fixing lint or TypeScript issues
+**Current V1.5 Responsibilities:**
+- UI polish (colors, spacing, labels for merge/split nodes)
+- Input validation helpers (split ratio sum validation, BOM completeness)
+- Test coverage expansion (extending Sonnet's test framework)
+- Documentation updates (README, code comments, guides)
+- Lint and TypeScript fixes
+- Simple bug fixes with clear scope
 
-Claude Haiku should only be used for clearly scoped, low-risk tasks.
+**General Responsibilities:**
+- Small bug fixes
+- Simple UI adjustments
+- Updating tests and test coverage
+- Editing documentation
+- Small, isolated refactors
+- Fixing lint or TypeScript issues
+
+Claude Haiku should only be used for clearly scoped, low-risk tasks. Do NOT use Haiku for calculation engine, graph validation, or propagation logic.
 
 ### Codex — Engineering Reviewer and Git Operator
-Responsible for:
-- reviewing plans and implementations critically
-- identifying bugs, edge cases, and technical risks
-- checking consistency with the approved plan
-- handling commit and push workflows
-- writing clean commit messages
+**Current V1.5 Responsibilities:**
+- Reviewing topological sort and demand propagation logic for correctness
+- Validating test coverage for merge/split/fork-join scenarios
+- Checking consistency with V1.5_IMPLEMENTATION_PLAN.md requirements
+- Reviewing calculation accuracy and edge case handling
+- Ensuring graph validation rules match PRD constraints
 
-Codex is primarily a reviewer, not the main builder.
+**General Responsibilities:**
+- Reviewing plans and implementations critically
+- Identifying bugs, edge cases, and technical risks
+- Checking consistency with approved plans
+- Handling commit and push workflows
+- Writing clean, descriptive commit messages
+
+Codex is primarily a reviewer and quality gate, not the main builder.
 
 ### Gemini — Brainstorm Partner
-Responsible for:
-- brainstorming product ideas
-- exploring UX directions
-- helping with positioning and messaging
-- drafting planning docs when useful
-- challenging assumptions
+**Current V1.5 Responsibilities:**
+- Not typically used for V1.5 (implementation phase, not planning phase)
+- If needed: explore UX for merge/split node presentation, alternative split semantics
 
-Gemini is not the primary implementation agent.
+**General Responsibilities:**
+- Brainstorming product ideas and features
+- Exploring UX directions and interaction patterns
+- Helping with positioning and messaging
+- Drafting planning docs and PRDs when useful
+- Challenging assumptions and exploring alternatives
+
+Gemini is not the primary implementation agent. Only use for ideation and planning, not execution.
 
 ## Default Workflow
-1. Define the feature clearly.
+
+### For V1.5 Implementation (Current):
+1. **Planning is done** — V1.5_PRD.md and V1.5_IMPLEMENTATION_PLAN.md are approved.
+2. **Assign work to Claude Sonnet** — Implement steps 1-5 (types, validation, propagation, tests, UI).
+3. **Review with Codex** — Validate against plan, check test coverage, verify calculation correctness.
+4. **Polish with Claude Haiku** — UI adjustments, documentation, test expansion.
+5. **Commit with Codex** — Clean, descriptive commit messages; push to dev branch.
+
+### For General Feature Work:
+1. Define the feature clearly (or use Gemini to brainstorm).
 2. Use Claude Sonnet to implement it.
-3. Use Codex to review it.
-4. Use Claude Haiku for small follow-up fixes if useful.
+3. Use Codex to review for bugs, risks, consistency with plan.
+4. Use Claude Haiku for small follow-up fixes if needed.
 5. Use Codex to commit and push changes.
 6. Use Gemini only when brainstorming or exploring alternatives is helpful.
 
@@ -82,8 +127,16 @@ Avoid vague commit messages like:
 
 If pushing is not possible, clearly explain that and provide the commit message and required git commands.
 
-## Rule
-If the task affects architecture, core logic, or maintainability, use Claude Sonnet.
-If the task is small and clearly bounded, Claude Haiku can handle it.
-If the task is review or git hygiene, use Codex.
-If the task is ideation, alternatives, or messaging, use Gemini.
+## Decision Rule
+
+**For V1.5 Implementation:**
+- **Core calculation engine, graph validation, topological sort, merge/split propagation** → Claude Sonnet
+- **UI components, input validation, documentation** → Claude Haiku (or Sonnet if complex)
+- **Code review, quality assurance, commit workflow** → Codex
+- **Brainstorming UX patterns or alternatives** → Gemini (unlikely needed now)
+
+**General Guideline:**
+- **Architecture, core logic, or maintainability** → Claude Sonnet
+- **Small, clearly bounded, low-risk** → Claude Haiku
+- **Review or git hygiene** → Codex
+- **Ideation, alternatives, or messaging** → Gemini
