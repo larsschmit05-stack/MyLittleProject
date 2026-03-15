@@ -9,7 +9,7 @@ import {
   EdgeChange,
 } from 'reactflow';
 import { isValidConnection as checkConnection } from '../lib/flow/validation';
-import { calculateFlow } from '../utils/calculations';
+import { calculateFlowDAG } from '../utils/calculations';
 import { insertModel, updateModel, fetchModel } from '../lib/persistence';
 import type {
   FlowNode,
@@ -162,7 +162,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
       });
 
       if (changes.some((c) => c.type === 'remove')) {
-        set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+        set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       }
 
       syncActiveScenario();
@@ -210,7 +210,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
       });
 
       if (changes.some((c) => c.type === 'add' || c.type === 'remove')) {
-        set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+        set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       }
 
       syncActiveScenario();
@@ -220,13 +220,13 @@ const useFlowStore = create<FlowStore>((set, get) => {
       const { nodes, edges } = get();
       if (!checkConnection(connection, nodes, edges)) return;
       set({ edges: addEdge(connection, edges) });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       syncActiveScenario();
     },
 
     addNode: (node) => {
       set({ nodes: [...get().nodes, node] });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       syncActiveScenario();
     },
 
@@ -238,7 +238,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
             : n
         ) as FlowNode[],
       });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       syncActiveScenario();
     },
 
@@ -255,7 +255,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
 
     setGlobalDemand: (demand) => {
       set({ globalDemand: demand });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()) });
       syncActiveScenario();
     },
 
@@ -295,7 +295,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         globalDemand: model.globalDemand,
         activeScenarioId: id,
         selectedElement: null,
-        derivedResults: calculateFlow(model),
+        derivedResults: calculateFlowDAG(model),
       });
     },
 
@@ -373,7 +373,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
           nodes: nextNodes,
           edges: nextEdges,
           globalDemand: model.globalDemand,
-          derivedResults: calculateFlow(model),
+          derivedResults: calculateFlowDAG(model),
           selectedElement: null,
           savedModelId: id,
           savedModelName: row.name,
