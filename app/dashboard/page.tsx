@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { listModels, renameModel, deleteModel, duplicateModel } from '../../lib/persistence';
 import type { SavedModelRow } from '../../lib/persistence';
 import useFlowStore from '../../store/useFlowStore';
+import useAuthStore from '../../store/useAuthStore';
 
 type ModelListItem = Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>;
 
@@ -40,6 +41,12 @@ const dangerBtn: React.CSSProperties = {
 export default function DashboardPage() {
   const router = useRouter();
   const resetStore = useFlowStore((s) => s.resetStore);
+  const logout = useAuthStore((s) => s.logout);
+
+  async function handleLogout() {
+    await logout();
+    router.push('/login');
+  }
 
   const [models, setModels] = useState<ModelListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,9 +129,14 @@ export default function DashboardPage() {
           <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
             Your Models
           </h1>
-          <button onClick={handleCreateNew} style={primaryBtn}>
-            + Create New Model
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={handleCreateNew} style={primaryBtn}>
+              + Create New Model
+            </button>
+            <button onClick={handleLogout} style={secondaryBtn}>
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* States */}
