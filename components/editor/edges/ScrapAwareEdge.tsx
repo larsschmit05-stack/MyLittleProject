@@ -17,20 +17,34 @@ export default function ScrapAwareEdge({
   const isScrap = data?.isScrap === true;
 
   return (
-    <path
-      id={id}
-      className="react-flow__edge-path"
-      d={edgePath}
-      markerEnd={markerEnd}
-      style={{
-        stroke: selected
-          ? 'var(--color-action)'
-          : isScrap
-            ? 'var(--color-text-label)'
-            : 'var(--color-border)',
-        strokeWidth: selected ? 2 : 1.5,
-        strokeDasharray: isScrap ? '6 3' : undefined,
-      }}
-    />
+    <g>
+      {/* Invisible hit-area path for easier clicking */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={12}
+        strokeLinecap="round"
+        pointerEvents="stroke"
+        style={{ cursor: 'pointer' }}
+      />
+      {/* Visible path */}
+      <path
+        id={id}
+        className="react-flow__edge-path"
+        d={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          stroke: selected
+            ? 'var(--color-action)'
+            : isScrap
+              ? 'var(--color-text-label)'
+              : 'var(--color-border)',
+          strokeWidth: selected ? 2 : 1.5,
+          strokeDasharray: isScrap ? '6 3' : undefined,
+          pointerEvents: 'none',
+        }}
+      />
+    </g>
   );
 }
