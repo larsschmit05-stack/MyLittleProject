@@ -808,6 +808,90 @@ describe('calculateFlowDAG — bottleneck is the split node itself', () => {
   });
 });
 
+// ─── calculateFlowDAG — split outputs converging directly at Sink ─────────────
+
+describe('calculateFlowDAG — split outputs converging directly at Sink (95%/5%, demand=50)', () => {
+  // src → split(95%→p2, 5%→p3) → p2 → snk
+  //                             → p3 ↗
+  // P2 handles 47.5, P3 handles 2.5; sum = 50
+  const model: SerializedModel = {
+    nodes: [
+      makeSource('src'),
+      makeProcess('split'),
+      makeProcess('p2'),
+      makeProcess('p3'),
+      makeSink('snk'),
+    ],
+    edges: [
+      { id: 'src-split', source: 'src', target: 'split' },
+      { id: 'split-p2', source: 'split', target: 'p2', data: { splitRatio: 95 } },
+      { id: 'split-p3', source: 'split', target: 'p3', data: { splitRatio: 5 } },
+      { id: 'p2-snk', source: 'p2', target: 'snk' },
+      { id: 'p3-snk', source: 'p3', target: 'snk' },
+    ],
+    globalDemand: 50,
+  };
+
+  it('split.rt=50, p2.rt=47.5, p3.rt=2.5', () => {
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['split'].requiredThroughput).toBeCloseTo(50, 4);
+    expect(r.nodeResults['p2'].requiredThroughput).toBeCloseTo(47.5, 4);
+    expect(r.nodeResults['p3'].requiredThroughput).toBeCloseTo(2.5, 4);
+  });
+
+  it('systemThroughput=50 when all nodes have sufficient capacity', () => {
+    // Use high-capacity nodes (EC=800) so demand is not constrained
+    const highCapModel: SerializedModel = {
+      nodes: [
+        makeSource('src'),
+        makeProcess('split', { throughputRate: 100, availableTime: 8 }),
+        makeProcess('p2', { throughputRate: 100, availableTime: 8 }),
+        makeProcess('p3', { throughputRate: 100, availableTime: 8 }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'src-split', source: 'src', target: 'split' },
+        { id: 'split-p2', source: 'split', target: 'p2', data: { splitRatio: 95 } },
+        { id: 'split-p3', source: 'split', target: 'p3', data: { splitRatio: 5 } },
+        { id: 'p2-snk', source: 'p2', target: 'snk' },
+        { id: 'p3-snk', source: 'p3', target: 'snk' },
+      ],
+      globalDemand: 50,
+    };
+    const r = calculateFlowDAG(highCapModel);
+    expect(r.systemThroughput).toBeCloseTo(50, 4);
+  });
+});
+
+describe('calculateFlowDAG — split outputs converging directly at Sink (80%/20%, demand=100)', () => {
+  // src → split(80%→pA, 20%→pB) → pA → snk
+  //                              → pB ↗
+  const model: SerializedModel = {
+    nodes: [
+      makeSource('src'),
+      makeProcess('split'),
+      makeProcess('pA'),
+      makeProcess('pB'),
+      makeSink('snk'),
+    ],
+    edges: [
+      { id: 'src-split', source: 'src', target: 'split' },
+      { id: 'split-pA', source: 'split', target: 'pA', data: { splitRatio: 80 } },
+      { id: 'split-pB', source: 'split', target: 'pB', data: { splitRatio: 20 } },
+      { id: 'pA-snk', source: 'pA', target: 'snk' },
+      { id: 'pB-snk', source: 'pB', target: 'snk' },
+    ],
+    globalDemand: 100,
+  };
+
+  it('split.rt=100, pA.rt=80, pB.rt=20', () => {
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['split'].requiredThroughput).toBeCloseTo(100, 4);
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(80, 4);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(20, 4);
+  });
+});
+
 describe('calculateFlowDAG — all nodes at equal utilization', () => {
   it('bottleneckNodeId is the process node id (not null)', () => {
     // EC = demand = 10 → utilization = 1.0 for all nodes

@@ -1,6 +1,12 @@
 import type { Connection, Edge, Node } from 'reactflow';
 import type { EdgeData, ProcessNodeData } from '../../types/flow';
 
+function getNodeDisplayName(node: Node): string {
+  return (node.data as ProcessNodeData)?.name
+    || (node.data as Record<string, unknown>)?.label as string
+    || node.id;
+}
+
 export type ValidationErrorCategory =
   | 'cycle'
   | 'missing_bom'
@@ -183,7 +189,8 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     !scrapDeadEndIds.has(n.id)
   );
   if (notForwardReachable.length > 0) {
-    errors.push('One or more nodes are not reachable from any Source');
+    const names = notForwardReachable.map(getNodeDisplayName).join(', ');
+    errors.push(`Not reachable from any Source: ${names}`);
     categories.push('orphaned_node');
   }
 
@@ -207,7 +214,8 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     !scrapDeadEndIds.has(n.id)
   );
   if (notBackwardReachable.length > 0) {
-    errors.push('One or more nodes have no path to the Sink');
+    const names = notBackwardReachable.map(getNodeDisplayName).join(', ');
+    errors.push(`No path to Sink: ${names}`);
     categories.push('orphaned_node');
   }
 
@@ -222,7 +230,7 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     const targetId = scrapEdge.target;
     if (realEdges.some(e => e.source === targetId)) {
       const targetNode = nodes.find(n => n.id === targetId);
-      const name = (targetNode?.data as ProcessNodeData)?.name ?? targetId;
+      const name = targetNode ? getNodeDisplayName(targetNode) : targetId;
       errors.push(`A scrap path from "${name}" connects to a node with further outputs`);
       categories.push('invalid_scrap_target');
     }
@@ -257,9 +265,7 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
       const sum = ratios.reduce((a, b) => a + b, 0);
       const hasMissing = ratios.some(r => r === 0);
       const isOutOfRange = sum < 99 || sum > 101;
-      const name = node.type === 'process'
-        ? ((node.data as ProcessNodeData)?.name ?? node.id)
-        : ((node.data as Record<string, unknown>)?.label as string ?? node.id);
+      const name = getNodeDisplayName(node);
 
       if (hasMissing) {
         errors.push(`Split node "${name}" has missing split ratios`);

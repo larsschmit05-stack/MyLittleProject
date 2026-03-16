@@ -221,6 +221,70 @@ describe('validateGraph — invalid graphs', () => {
     expect(result.categories).toContain('orphaned_node');
   });
 
+  it('orphaned node error includes node name, not raw ID', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('welding-1', 'process', 'Welding'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [makeEdge('e1', 's', 'k')]; // Welding disconnected
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.errors[0]).toContain('Welding');
+    expect(result.errors[0]).not.toContain('welding-1');
+  });
+
+  it('node with no path to sink error includes node name', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('buffer-1', 'process', 'Buffer Node'),
+      makeNode('k', 'sink'),
+    ];
+    // Buffer Node has incoming but no outgoing real edge
+    const edges = [makeEdge('e1', 's', 'buffer-1'), makeEdge('e2', 's', 'k')];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('Buffer Node'))).toBe(true);
+  });
+
+  it('scrap-target error includes node name (regression guard)', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p1-id', 'process', 'Cutting'),
+      makeNode('p2-id', 'process', 'Downstream'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'p1-id'),
+      makeEdge('e2', 'p1-id', 'k'),
+      makeEdge('es', 'p1-id', 'p2-id', true), // scrap to p2
+      makeEdge('e3', 'p2-id', 'k'),            // p2 has outgoing real edge
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('Downstream'))).toBe(true);
+  });
+
+  it('split node error includes node name (regression guard)', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('split-id', 'process', 'Splitter'),
+      makeNode('p1', 'process'),
+      makeNode('p2', 'process'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      makeEdge('e1', 's', 'split-id'),
+      makeEdge('e2', 'split-id', 'p1'), // no splitRatio
+      makeEdge('e3', 'split-id', 'p2'), // no splitRatio
+      makeEdge('e4', 'p1', 'k'),
+      makeEdge('e5', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('Splitter'))).toBe(true);
+  });
+
   it('merge node with missing bomRatios → missing_bom', () => {
     // mergeNode has no bomRatios set
     const mergeNode: Node = {

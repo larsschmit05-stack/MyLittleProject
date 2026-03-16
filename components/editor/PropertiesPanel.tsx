@@ -534,6 +534,7 @@ const resultValueStyle = {
 
 function ResultsSummary() {
   const derivedResults = useFlowStore((s) => s.derivedResults);
+  const validationResult = useFlowStore((s) => s.validationResult);
   const selectedElement = useFlowStore((s) => s.selectedElement);
   const nodes = useFlowStore((s) => s.nodes);
 
@@ -553,10 +554,20 @@ function ResultsSummary() {
       ? derivedResults.nodeResults[selectedElement.id] ?? null
       : null;
 
+  const isInvalid = validationResult && !validationResult.isValid;
+
   return (
     <section>
       <h2 style={panelSectionHeadingStyle}>Results</h2>
-      {isEmpty ? (
+      {nodes.length === 0 ? (
+        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+          Build a complete model to see results.
+        </p>
+      ) : isInvalid ? (
+        <p style={{ fontSize: '13px', color: 'var(--color-warning)' }}>
+          Cannot calculate — {validationResult.errors[0]}
+        </p>
+      ) : isEmpty ? (
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           Build a complete model to see results.
         </p>

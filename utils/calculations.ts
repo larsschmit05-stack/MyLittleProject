@@ -258,6 +258,22 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
     realEdgesByTarget.get(e.target)!.push(e);
   }
 
+  // Forward pass: compute flow share for each node (fraction of total flow passing through it)
+  const flowShare = new Map<string, number>();
+  for (const id of order) {
+    const incoming = realEdgesByTarget.get(id) ?? [];
+    if (incoming.length === 0) {
+      flowShare.set(id, 1.0); // source node: 100% of flow
+    } else {
+      const share = incoming.reduce((sum, edge) => {
+        const upShare = flowShare.get(edge.source) ?? 1.0;
+        const splitRatioFrac = (edge.data?.splitRatio ?? 100) / 100;
+        return sum + upShare * splitRatioFrac;
+      }, 0);
+      flowShare.set(id, share);
+    }
+  }
+
   // Demand tracking
   const requiredThroughput = new Map<string, number>();
   const splitCandidates = new Map<string, number[]>();
@@ -307,8 +323,17 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
     if (node.type === 'source') continue;
 
     if (node.type === 'sink') {
-      for (const inEdge of incoming) {
-        pushDemand(inEdge.source, inEdge, rt);
+      if (incoming.length <= 1) {
+        for (const inEdge of incoming) {
+          pushDemand(inEdge.source, inEdge, rt);
+        }
+      } else {
+        const sinkShare = flowShare.get(nodeId) ?? 1.0;
+        for (const inEdge of incoming) {
+          const upShare = flowShare.get(inEdge.source) ?? 0;
+          const fraction = sinkShare > 0 ? upShare / sinkShare : 1 / incoming.length;
+          pushDemand(inEdge.source, inEdge, rt * fraction);
+        }
       }
     } else if (node.type === 'process') {
       const data = node.data as ProcessNodeData;
