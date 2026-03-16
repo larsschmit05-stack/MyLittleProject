@@ -200,6 +200,19 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
   const [invalidFields, setInvalidFields] = useState<Partial<Record<NumericField, string>>>({});
   const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
 
+  // Sync local state when data prop changes (e.g., after updateNodeData recalculates results)
+  useEffect(() => {
+    setName(data.name);
+    setRawValues({
+      throughputRate: String(data.throughputRate),
+      availableTime: String(data.availableTime),
+      yield: String(data.yield),
+      numberOfResources: String(data.numberOfResources),
+      conversionRatio: String(data.conversionRatio),
+    });
+    setOutputMaterial(data.outputMaterial ?? '');
+  }, [data]);
+
   // Check if this is a merge node (2+ incoming real edges)
   const incomingReal = edges.filter((e) => e.target === nodeId && !e.data?.isScrap);
   const isMergeNode = incomingReal.length >= 2;
