@@ -85,7 +85,7 @@ const NUMERIC_FIELDS: { key: NumericField; label: string }[] = [
   { key: 'availableTime', label: 'Available Time (hours in the demand period)' },
   { key: 'yield', label: 'Yield (%)' },
   { key: 'numberOfResources', label: 'Number of Resources' },
-  { key: 'conversionRatio', label: 'Conversion Ratio' },
+  { key: 'conversionRatio', label: 'Conversion Ratio (input units per output unit)' },
 ];
 
 // ─── BOM Section ──────────────────────────────────────────────────────────────
