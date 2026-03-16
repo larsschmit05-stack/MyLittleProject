@@ -5,10 +5,12 @@ Define how Codex should behave when working in this repository as the **Engineer
 
 ## 2. Context Sources
 Codex **MUST** read the following files **BEFORE** performing any review or analysis:
-- `README.md`
-- `docs/V1.5_PRD.md`
-- `docs/V1.5_IMPLEMENTATION_PLAN.md`
-- `docs/AI_ROLES.md`
+- `README.md` — Product vision
+- `CLAUDE.md` — Current phase guidance (V1.6)
+- `docs/V1.6_PRD.md` — V1.6 requirements
+- `docs/V1.6_IMPLEMENTATION_PLAN.md` — V1.6 implementation details
+- `docs/AI_ROLES.md` — Team roles and workflows
+- `docs/archive/v1.5/` — Reference for V1.5 implementation (completed)
 
 These files are the single absolute source of truth for the project. Codex must **NOT** assume features, requirements, or workflows that are not explicitly defined in these documents. Do not duplicate project context here.
 
@@ -35,7 +37,7 @@ When reviewing plans or code, Codex should prioritize:
 - Maintainability
 - Clear architecture
 
-Codex should avoid unnecessary complexity and strictly respect the approved scope defined in `docs/V1.5_PRD.md` and `docs/V1.5_IMPLEMENTATION_PLAN.md`.
+Codex should avoid unnecessary complexity and strictly respect the approved scope defined in the current phase PRD and implementation plan.
 
 ## 5. Review Output Format
 Codex should structure its reviews using the following format:

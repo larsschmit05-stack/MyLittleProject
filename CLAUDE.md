@@ -1,4 +1,4 @@
-# Claude Implementation Guide - V1.5
+# Claude Implementation Guide
 
 **Quick Reference for Claude Sonnet & Haiku**
 
@@ -6,140 +6,96 @@
 
 ## 📖 Read These First
 - `README.md` — Product vision
-- `docs/V1.5_PRD.md` — Requirements (DAGs, BOM, splits)
-- `docs/V1.5_IMPLEMENTATION_PLAN.md` — Full technical plan (reference for details)
+- `docs/V1.6_PRD.md` — V1.6 feature requirements (Auth, Persistence, Validation)
+- `docs/V1.6_IMPLEMENTATION_PLAN.md` — V1.6 implementation roadmap with code skeletons
 - `docs/AI_ROLES.md` — Git/collaboration rules
 
 ---
 
-## 🎯 Role & Scope
+## 🎯 Current Phase
 
-**Claude Sonnet:** Steps 1-5 (types, validation, calculation engine, tests, UI)
-**Claude Haiku:** Step 6 (polish, documentation, simple fixes)
+**Status:** V1.6 implementation phase starting.
 
-**Out of Scope for V1.5:** Authentication, Import/Export, Operational Calendars, Max Capability Mode, Multi-product, Stochastic Simulation, Rework Loops
-
----
-
-## 🏗️ V1.5 Key Concepts (Compact)
-
-| Concept | Details |
-|---------|---------|
-| **Merges** | Process node with multiple inputs + BOM ratios |
-| **Splits** | Process node with multiple outputs (real edges + scrap edges) |
-| **Fork-join** | Node with both multiple inputs AND outputs (allowed) |
-| **Real output edge** | Carries downstream demand in propagation |
-| **Scrap edge** | Visual only; excluded from demand propagation; dead-end |
-| **Topological sort** | Order nodes Sink→Source using real edges only |
-| **BOM ratios** | Keyed by edge ID; define units needed per output |
-| **Material field** | Optional `outputMaterial` for UI labels (no validation) |
+**Previous Phases:**
+- **V1.0:** Linear process modeling (source → process → sink)
+- **V1.5:** DAG support (merges, splits, fork-join with BOM ratios)
+- **Archived documentation:** See `docs/archive/v1.5/` for V1.5 implementation details
 
 ---
 
-## 🚀 Build Steps (Sequential)
+## 🎯 Role & Scope (V1.6)
 
-```
-Step 1: Types          → Step 2: Validation       → Step 3: Propagation
-   ↓                      ↓                           ↓
-(Sonnet)            (Sonnet)                      (Sonnet)
-                                                     ↓
-                                                Step 4: Tests
-                                                   ↓
-                                                (Sonnet/Haiku)
-                                                   ↓
-                                           ⚠️ GATE: All tests must pass
-                                                   ↓
-                                             Step 5: UI
-                                                   ↓
-                                                (Sonnet)
-                                                   ↓
-                                             Step 6: Polish
-                                                   ↓
-                                                (Haiku)
-```
+**Claude Opus:** Lead implementation of all 3 features per V1.6_IMPLEMENTATION_PLAN.md
+- Feature 1: Supabase Auth Setup (3 days)
+- Feature 2: Model Persistence with RLS (2 days)
+- Feature 3: Process Validation (3 days)
 
-**CRITICAL:** Do NOT start Step 5 until Step 4 passes completely.
+**Opus Implementation Principles (NO OVER-ENGINEERING):**
+- ✅ Follow the implementation plan closely (don't invent new architectures)
+- ✅ Use standard patterns (Supabase auth, React hooks, Zustand stores)
+- ✅ Write clean, readable code with proper error handling
+- ✅ Add tests for critical paths (auth, RLS, validation)
+- ✅ Keep solutions simple and pragmatic
+- ❌ No unnecessary abstractions or layers
+- ❌ No premature optimization or over-generalization
+- ❌ No custom state management if Zustand works
+- ❌ No complex utility libraries for simple tasks
 
----
+**Quality Focus:** Catch edge cases and handle errors properly — not complexity for complexity's sake.
 
-## ⚠️ Highest-Risk Areas
+**Claude Haiku:** Polish, testing, and documentation (after Opus)
+- Component styling with Tailwind
+- Test coverage and edge cases
+- Documentation updates
 
-| Area | Risk | Mitigation |
-|------|------|-----------|
-| **Multi-level cascades** | One wrong node = silent wrong numbers | Test 2-level merges explicitly |
-| **Split with 2+ real outputs** | Must satisfy all paths simultaneously | Code: `max(demand1/ratio1, demand2/ratio2)` |
-| **V1 compatibility** | Old models have no `bomRatios`/`isScrap` | Guard: `undefined` = 1:1 BOM, no scrap |
-| **Edge ID orphaning** | Delete edge → BOM ratio lost | Purge stale keys in `onEdgesChange` |
-| **Topological sort order** | Wrong order = wrong results (silent bug) | Test with cascading scenarios |
+**Out of Scope (V1.7+):** Password reset, team sharing, Excel import, PDF export, offline mode, advanced auth
 
 ---
 
-## ✅ Definition of Done (Each Step)
+## 🚀 Build Steps (V1.6)
 
-| Step | Must Pass |
-|------|-----------|
-| 1 | V1 tests still pass; new types compile; V1 models load |
-| 2 | Linear chains, merges, fork-join, splits, cycles all validate correctly |
-| 3 | 3-part assembly (4:1:2 BOM), scrap-split, fork-join, multi-market all calculate correctly; V1 identical results |
-| 4 | **ALL TESTS PASS** (no failures); covers merges, splits, fork-join, cascading, yields; Codex sign-off |
-| 5 | BOM UI works; split ratios work; scrap edges render; V1 users unaffected |
-| 6 | Error messages clear; results panel shows valid or error (no NaN); validation doesn't block editing |
+See `docs/V1.6_IMPLEMENTATION_PLAN.md` for detailed 10+ step checklist per feature:
+
+**Feature 1 (Auth):** Supabase setup → Auth helpers → Context → Pages → Protected routes → Testing
+**Feature 2 (Persistence):** Database schema → CRUD functions → useModels hook → Dashboard → Editor
+**Feature 3 (Validation):** Validation functions → Graph traversal → Rules → Hooks → UI integration
 
 ---
 
-## 🔍 Review Gates (Codex Required)
+## ⚠️ Key Risk Areas (V1.6)
 
-| After Step | Check |
-|-----------|-------|
-| 2 | Cycle detection logic correct? |
-| 3 | Topological sort correct? Split with 2+ outputs sums right? |
-| 4 | **ALL TESTS PASS?** (GATE: cannot proceed without sign-off) |
-| 5 | No V1 regression? |
+- **RLS Configuration:** Must correctly isolate user data; test cross-user access prevention
+- **Auto-Save Logic:** 30s debounce must not hammer database; implement connection pooling
+- **Validation Performance:** Graph algorithms must complete in < 500ms on 50-node models
+- **Email Verification:** Confirmation email flow must be tested; handle spam filters
+
+---
+
+## ✅ Definition of Done
+
+V1.6 is complete when:
+- ✅ All 3 features implemented per V1.6_IMPLEMENTATION_PLAN.md
+- ✅ 100% RLS test coverage (cross-user access blocked)
+- ✅ All validation rules tested (7 rules + edge cases)
+- ✅ E2E tests passing (signup → create → validate → save → logout → login → load)
+- ✅ Performance targets met (auth < 2s, save < 1s, validation < 500ms)
+- ✅ No console errors or warnings in browser
+- ✅ All PRD success criteria met
 
 ---
 
 ## 📁 Files to Create/Modify
 
-```
-lib/flow/validation.ts       → Step 2
-lib/flow/calculations.ts     → Step 3
-lib/flow/calculations.test.ts → Step 4
-components/editor/PropertiesPanel.tsx → Step 5
-types/flow.ts                → Step 1
-store/useFlowStore.ts        → Update to use calculateFlowDAG()
-```
-
----
-
-## 🚨 Step-Specific Gotchas
-
-**Step 1:** Edge IDs change when deleted/recreated → stale `bomRatios` keys. Purge in `onEdgesChange`.
-
-**Step 2:** Cycle detection must run speculatively (before React Flow persists).
-
-**Step 3 (HIGHEST RISK):**
-- Multi-level merge cascades with different BOMs → easy silent bugs
-- Split with 2+ real outputs → demand sums from all paths
-- V1 model loading → guard `undefined` fields
-
-**Step 4:** Use `.toBeCloseTo(value, 4)` not exact equality (floating point).
-
-**Step 5:** Edge selection is new state (mutually exclusive with node selection).
-
-**Step 6:** Resolve node IDs to names in error messages.
-
----
-
-## 📋 For Details, See:
-- `docs/V1.5_IMPLEMENTATION_PLAN.md` — Full step descriptions, success criteria, risks
-- `docs/V1.5_PRD.md` — Product requirements and graph constraints
-- `docs/AI_ROLES.md` — Git workflow, commit messages
-- `docs/V1.5_AGENT_REFERENCE.md` — Multi-agent FAQ
+**See Section 1, 2, 3 of V1.6_IMPLEMENTATION_PLAN.md for exact file structure:**
+- 15+ new component files
+- 5+ new lib/hooks files
+- 10+ test files
+- 1 database migration
+- 4 RLS policies
 
 ---
 
 ## 🤝 Collaboration
-- Sonnet builds Steps 1-5
-- Haiku handles Step 6
-- Codex reviews after Steps 2, 3, 4 (Step 4 is mandatory gate)
 - Use `dev` branch, not `main`
+- See `docs/AI_ROLES.md` for git workflow and commit conventions
+- Previous phase archives available at `docs/archive/`

@@ -3,25 +3,41 @@
 ## Purpose
 Define the default responsibilities of Claude, Codex, and Gemini in this repository.
 
-**Current Project Context:** Building V1.5 of the Operational Process Modeler (capacity flow modeling tool with DAG support for merges, splits, and assemblies).
+**Current Project Context:** Operational Process Modeler is complete through V1.5 (DAG support with merges, splits, assemblies). V1.6 implementation phase in progress (Auth, Persistence, Validation) — Lead: Claude Opus.
 
 **Primary Documentation:**
 - `README.md` — Product vision and value proposition
-- `docs/V1.5_PRD.md` — Product requirements (DAGs, BOM, splits, complex propagation)
-- `docs/V1.5_IMPLEMENTATION_PLAN.md` — Step-by-step build plan with technical decisions
-- `CLAUDE.md` — Claude-specific implementation guidance
+- `CLAUDE.md` — Claude-specific implementation guidance (V1.6)
+- `docs/V1.6_PRD.md` — V1.6 product requirements
+- `docs/V1.6_IMPLEMENTATION_PLAN.md` — V1.6 implementation details
 - `docs/AI_ROLES.md` — This file (role definitions and workflow)
+- `docs/archive/v1.5/` — V1.5 implementation history (for reference)
 
 ## AI Roles
 
-### Claude Sonnet — Lead Builder
-**Current V1.5 Responsibilities:**
-- Implementing DAG graph engine (merges, splits, fork-join support)
-- Building topological sort and complex demand propagation engine
-- Writing calculation tests for merge/split scenarios
-- Implementing merge/split configuration UI (BOM and split ratio inputs)
-- Graph validation rewrite (cycle detection, scrap edge constraints, ratio validation)
-- Complex bug fixes and refactoring
+### Claude Opus — Lead Builder (V1.6)
+**Current Phase Responsibilities (V1.6):**
+- Implement Supabase Auth Setup (Feature 1, 3 days)
+- Implement Model Persistence with RLS (Feature 2, 2 days)
+- Implement Process Model Validation (Feature 3, 3 days)
+- Write production code per V1.6_IMPLEMENTATION_PLAN.md
+- Catch edge cases and ensure robust error handling
+- Keep implementations pragmatic (no over-engineering)
+
+**Principles:** Follow the plan, use standard patterns, write clean code. Superior quality without unnecessary complexity.
+
+**General Responsibilities:**
+- Leading complex implementation phases
+- Writing production-grade code with proper architecture
+- Identifying and handling edge cases
+- Making sound technical decisions when plan is ambiguous
+
+---
+
+### Claude Sonnet — Lead Builder (Post-V1.6)
+**Current Phase Responsibilities (V1.6):**
+- Standby for Feature 1-3; escalate to if Opus needs support
+- Available for parallel work on other components if needed
 
 **General Responsibilities:**
 - Implementing features in production
@@ -31,16 +47,14 @@ Define the default responsibilities of Claude, Codex, and Gemini in this reposit
 - Implementing complex logic and calculations
 - Handling complex refactors and debugging
 
-Claude Sonnet is the default agent for important engineering work and all V1.5 core implementation.
+Claude Sonnet is the default agent for important engineering work during implementation phases.
 
 ### Claude Haiku — Quick Executor
-**Current V1.5 Responsibilities:**
-- UI polish (colors, spacing, labels for merge/split nodes)
-- Input validation helpers (split ratio sum validation, BOM completeness)
-- Test coverage expansion (extending Sonnet's test framework)
-- Documentation updates (README, code comments, guides)
-- Lint and TypeScript fixes
-- Simple bug fixes with clear scope
+**Current Phase Responsibilities (V1.6):**
+- Component styling with Tailwind (LoginForm, SignupForm, ModelsList, etc.)
+- Writing and updating test cases per V1.6_IMPLEMENTATION_PLAN.md
+- Documentation updates and README changes
+- Small UI adjustments and bug fixes
 
 **General Responsibilities:**
 - Small bug fixes
@@ -50,15 +64,16 @@ Claude Sonnet is the default agent for important engineering work and all V1.5 c
 - Small, isolated refactors
 - Fixing lint or TypeScript issues
 
-Claude Haiku should only be used for clearly scoped, low-risk tasks. Do NOT use Haiku for calculation engine, graph validation, or propagation logic.
+Claude Haiku should only be used for clearly scoped, low-risk tasks. Do NOT use Haiku for core logic, complex calculations, or critical system components.
 
 ### Codex — Engineering Reviewer and Git Operator
-**Current V1.5 Responsibilities:**
-- Reviewing topological sort and demand propagation logic for correctness
-- Validating test coverage for merge/split/fork-join scenarios
-- Checking consistency with V1.5_IMPLEMENTATION_PLAN.md requirements
-- Reviewing calculation accuracy and edge case handling
-- Ensuring graph validation rules match PRD constraints
+**Current Phase Responsibilities (V1.6):**
+- Review Feature 1 (Auth) implementation against V1.6_PRD.md
+- Review Feature 2 (Persistence) implementation, verify RLS test coverage
+- Review Feature 3 (Validation) implementation, verify all 7 rules tested
+- Check performance targets met (auth < 2s, save < 1s, validation < 500ms)
+- Verify test coverage and edge cases handled
+- Commit and push changes to dev branch with descriptive messages
 
 **General Responsibilities:**
 - Reviewing plans and implementations critically
@@ -70,9 +85,10 @@ Claude Haiku should only be used for clearly scoped, low-risk tasks. Do NOT use 
 Codex is primarily a reviewer and quality gate, not the main builder.
 
 ### Gemini — Brainstorm Partner
-**Current V1.5 Responsibilities:**
-- Not typically used for V1.5 (implementation phase, not planning phase)
-- If needed: explore UX for merge/split node presentation, alternative split semantics
+**Current Phase Responsibilities:**
+- Planning next phase features and requirements
+- Exploring UX patterns and interaction improvements
+- Helping with product positioning and prioritization
 
 **General Responsibilities:**
 - Brainstorming product ideas and features
@@ -85,12 +101,16 @@ Gemini is not the primary implementation agent. Only use for ideation and planni
 
 ## Default Workflow
 
-### For V1.5 Implementation (Current):
-1. **Planning is done** — V1.5_PRD.md and V1.5_IMPLEMENTATION_PLAN.md are approved.
-2. **Assign work to Claude Sonnet** — Implement steps 1-5 (types, validation, propagation, tests, UI).
-3. **Review with Codex** — Validate against plan, check test coverage, verify calculation correctness.
-4. **Polish with Claude Haiku** — UI adjustments, documentation, test expansion.
-5. **Commit with Codex** — Clean, descriptive commit messages; push to dev branch.
+### For Implementation Phase (Current - V1.6):
+1. **Assign work to Claude Opus** — Implement Features 1-3 per V1.6_IMPLEMENTATION_PLAN.md (pragmatic, no over-engineering).
+2. **Review with Codex** — Validate against V1.6_PRD.md, check test coverage, verify RLS and performance.
+3. **Polish with Claude Haiku** — UI styling, test coverage, documentation updates.
+4. **Commit with Codex** — Clean, descriptive commit messages; push to dev branch.
+
+### For Planning Phase (V1.7+):
+1. **Brainstorm with Gemini** — Explore features, UX patterns, and prioritization.
+2. **Draft requirements** — Create V1.7_PRD.md and V1.7_IMPLEMENTATION_PLAN.md.
+3. **Review and approve** — Get stakeholder sign-off before implementation begins.
 
 ### For General Feature Work:
 1. Define the feature clearly (or use Gemini to brainstorm).
@@ -129,11 +149,16 @@ If pushing is not possible, clearly explain that and provide the commit message 
 
 ## Decision Rule
 
-**For V1.5 Implementation:**
-- **Core calculation engine, graph validation, topological sort, merge/split propagation** → Claude Sonnet
-- **UI components, input validation, documentation** → Claude Haiku (or Sonnet if complex)
-- **Code review, quality assurance, commit workflow** → Codex
-- **Brainstorming UX patterns or alternatives** → Gemini (unlikely needed now)
+**For Planning Phase:**
+- **Feature brainstorming, requirements exploration, UX patterns** → Gemini
+- **Draft PRD and implementation plans** → Gemini + stakeholder review
+- **Architecture decisions** → Gemini + Sonnet (when implementation perspective needed)
+
+**For Implementation Phase:**
+- **Core logic and features per approved plan** → Claude Sonnet
+- **UI, documentation, and polish** → Claude Haiku
+- **Code review and quality gates** → Codex
+- **Brainstorming (if needed mid-phase)** → Gemini
 
 **General Guideline:**
 - **Architecture, core logic, or maintainability** → Claude Sonnet
