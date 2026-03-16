@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import useFlowStore from './useFlowStore';
-import type { FlowNode, FlowProcessNode, SerializedModel } from '../types/flow';
+import type { FlowNode, FlowProcessNode, SerializedModel, SourceNodeData, ProcessNodeData } from '../types/flow';
 
 // ─── Persistence mocks ────────────────────────────────────────────────────────
 
@@ -253,7 +253,7 @@ describe('updateSourceNodeData', () => {
     useFlowStore.getState().updateSourceNodeData('src-1', { outputMaterial: 'Raw Steel' });
 
     const node = useFlowStore.getState().nodes.find(n => n.id === 'src-1');
-    expect(node?.data.outputMaterial).toBe('Raw Steel');
+    expect((node?.data as SourceNodeData).outputMaterial).toBe('Raw Steel');
   });
 
   it('does not affect process nodes', () => {
@@ -268,7 +268,7 @@ describe('updateSourceNodeData', () => {
 
     const node = useFlowStore.getState().nodes.find(n => n.id === 'proc-1');
     // process node should be unchanged — updateSourceNodeData only targets source nodes
-    expect((node?.data as Record<string, unknown>).outputMaterial).toBeUndefined();
+    expect((node?.data as unknown as Record<string, unknown>).outputMaterial).toBeUndefined();
   });
 });
 
@@ -376,8 +376,8 @@ describe('getSerializedModel — edge data', () => {
 
     const model = useFlowStore.getState().getSerializedModel();
     const serialized = model.nodes.find(n => n.id === 'proc-1');
-    expect(serialized?.data.bomRatios).toEqual({ 'e1': 4 });
-    expect(serialized?.data.outputMaterial).toBe('Widget');
+    expect((serialized?.data as ProcessNodeData).bomRatios).toEqual({ 'e1': 4 });
+    expect((serialized?.data as ProcessNodeData).outputMaterial).toBe('Widget');
   });
 });
 
@@ -436,6 +436,6 @@ describe('scenario switch — V1.5 fields survive round-trip', () => {
     useFlowStore.getState().switchScenario('baseline');
 
     const node = useFlowStore.getState().nodes.find(n => n.id === 'src-1');
-    expect(node?.data.outputMaterial).toBe('Raw Steel');
+    expect((node?.data as SourceNodeData).outputMaterial).toBe('Raw Steel');
   });
 });

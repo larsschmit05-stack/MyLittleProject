@@ -10,7 +10,7 @@ export default function EditorInitClient() {
   useEffect(() => {
     const id = searchParams.get('id');
     if (id) loadModel(id);
-  }, [searchParams]); // re-run when URL changes so switching ?id=A → ?id=B loads correctly
+  }, [searchParams, loadModel]); // re-run when URL changes so switching ?id=A → ?id=B loads correctly
 
   return null;
 }

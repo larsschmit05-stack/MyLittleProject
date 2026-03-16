@@ -5,10 +5,10 @@ import { isProcessValueValid, isValidConnection, validateGraph } from './validat
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function makeNode(id: string, type: 'source' | 'process' | 'sink', name?: string): Node {
+function makeNode(id: string, type: 'source' | 'process' | 'sink', name?: string, outputMaterial?: string): Node {
   const data =
     type === 'process'
-      ? ({ name: name ?? id, throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1 } as ProcessNodeData)
+      ? ({ name: name ?? id, throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1, outputMaterial: outputMaterial ?? 'Material' } as ProcessNodeData)
       : { label: name ?? id };
   return { id, type, position: { x: 0, y: 0 }, data };
 }
@@ -108,6 +108,7 @@ describe('validateGraph — valid graphs', () => {
     const mergeData: ProcessNodeData = {
       name: 'Merge',
       throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1,
+      outputMaterial: 'Assembly',
       bomRatios: { 'e3': 2, 'e4': 1 },
     };
     const mergeNode: Node = { id: 'm', type: 'process', position: { x: 0, y: 0 }, data: mergeData };
@@ -131,6 +132,7 @@ describe('validateGraph — valid graphs', () => {
     const forkJoinData: ProcessNodeData = {
       name: 'FJ',
       throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1,
+      outputMaterial: 'FJ Output',
       bomRatios: { 'e2': 1, 'e3': 1 },
     };
     const fjNode: Node = { id: 'fj', type: 'process', position: { x: 0, y: 0 }, data: forkJoinData };
@@ -289,7 +291,7 @@ describe('validateGraph — invalid graphs', () => {
     // mergeNode has no bomRatios set
     const mergeNode: Node = {
       id: 'm', type: 'process', position: { x: 0, y: 0 },
-      data: { name: 'Merge', throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1 },
+      data: { name: 'Merge', throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1, outputMaterial: 'Assembly' },
     };
     const nodes = [makeNode('s1', 'source'), makeNode('s2', 'source'), mergeNode, makeNode('k', 'sink')];
     const edges = [
@@ -306,6 +308,7 @@ describe('validateGraph — invalid graphs', () => {
     const mergeData: ProcessNodeData = {
       name: 'Merge',
       throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1,
+      outputMaterial: 'Assembly',
       bomRatios: { 'e1': 2, 'e2': 0 }, // 0 is invalid
     };
     const mergeNode: Node = { id: 'm', type: 'process', position: { x: 0, y: 0 }, data: mergeData };
@@ -439,5 +442,92 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('invalid_ratio_sum');
+  });
+});
+
+// ─── validateGraph — missing outputMaterial on process node ──────────────────
+
+describe('validateGraph — missing outputMaterial on process node', () => {
+  it('process node with no outputMaterial → missing_output_material', () => {
+    const nodes = [makeNode('s', 'source'), makeNode('p', 'process', 'P', ''), makeNode('k', 'sink')];
+    const edges = [makeEdge('e1', 's', 'p'), makeEdge('e2', 'p', 'k')];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.categories).toContain('missing_output_material');
+  });
+
+  it('process node with empty string outputMaterial → missing_output_material', () => {
+    const pNode: Node = {
+      id: 'p', type: 'process', position: { x: 0, y: 0 },
+      data: { name: 'P', throughputRate: 10, availableTime: 480, yield: 100, numberOfResources: 1, conversionRatio: 1, outputMaterial: '   ' } as ProcessNodeData,
+    };
+    const nodes = [makeNode('s', 'source'), pNode, makeNode('k', 'sink')];
+    const edges = [makeEdge('e1', 's', 'p'), makeEdge('e2', 'p', 'k')];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.categories).toContain('missing_output_material');
+  });
+
+  it('process node with outputMaterial set → valid, no missing_output_material', () => {
+    const nodes = [makeNode('s', 'source'), makeNode('p', 'process', 'P', 'Widget'), makeNode('k', 'sink')];
+    const edges = [makeEdge('e1', 's', 'p'), makeEdge('e2', 'p', 'k')];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(true);
+    expect(result.categories).not.toContain('missing_output_material');
+  });
+});
+
+// ─── validateGraph — mixed outputMaterial at Sink ────────────────────────────
+
+describe('validateGraph — mixed outputMaterial at Sink', () => {
+  it('two process nodes with distinct materials feeding Sink → mixed_sink_inputs', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p1', 'process', 'P1', 'Widget A'),
+      makeNode('p2', 'process', 'P2', 'Widget B'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      { id: 'e1', source: 's', target: 'p1', data: { splitRatio: 50 } },
+      { id: 'e2', source: 's', target: 'p2', data: { splitRatio: 50 } },
+      makeEdge('e3', 'p1', 'k'),
+      makeEdge('e4', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).toContain('mixed_sink_inputs');
+  });
+
+  it('two process nodes with identical materials → no mixed_sink_inputs', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p1', 'process', 'P1', 'Widget'),
+      makeNode('p2', 'process', 'P2', 'Widget'),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      { id: 'e1', source: 's', target: 'p1', data: { splitRatio: 50 } },
+      { id: 'e2', source: 's', target: 'p2', data: { splitRatio: 50 } },
+      makeEdge('e3', 'p1', 'k'),
+      makeEdge('e4', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).not.toContain('mixed_sink_inputs');
+  });
+
+  it('one process with material, one without → no mixed_sink_inputs (only 1 defined material)', () => {
+    const nodes = [
+      makeNode('s', 'source'),
+      makeNode('p1', 'process', 'P1', 'Widget'),
+      makeNode('p2', 'process', 'P2', ''),
+      makeNode('k', 'sink'),
+    ];
+    const edges = [
+      { id: 'e1', source: 's', target: 'p1', data: { splitRatio: 50 } },
+      { id: 'e2', source: 's', target: 'p2', data: { splitRatio: 50 } },
+      makeEdge('e3', 'p1', 'k'),
+      makeEdge('e4', 'p2', 'k'),
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).not.toContain('mixed_sink_inputs');
   });
 });

@@ -13,7 +13,9 @@ export type ValidationErrorCategory =
   | 'invalid_ratio_sum'
   | 'invalid_sink_count'
   | 'orphaned_node'
-  | 'invalid_scrap_target';
+  | 'invalid_scrap_target'
+  | 'missing_output_material'
+  | 'mixed_sink_inputs';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -275,6 +277,29 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
         categories.push('invalid_ratio_sum');
       }
     }
+  }
+
+  // Output Material required on all process nodes
+  for (const pNode of processNodes) {
+    const data = pNode.data as ProcessNodeData;
+    if (!data?.outputMaterial?.trim()) {
+      const name = data?.name ?? pNode.id;
+      errors.push(`Process node "${name}" is missing an Output Material`);
+      categories.push('missing_output_material');
+    }
+  }
+
+  // Sink must receive only one distinct product type
+  const sinkIncoming = realEdges.filter(e => e.target === sinkId);
+  const sinkMaterials = sinkIncoming
+    .map(e => {
+      const srcNode = nodes.find(n => n.id === e.source);
+      return (srcNode?.data as ProcessNodeData)?.outputMaterial?.trim() ?? '';
+    })
+    .filter(m => m !== '');
+  if (new Set(sinkMaterials).size >= 2) {
+    errors.push('Sink accepts only one product. Mark unwanted inputs as scrap or remove them.');
+    categories.push('mixed_sink_inputs');
   }
 
   return { isValid: errors.length === 0, errors, categories };

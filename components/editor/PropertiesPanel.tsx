@@ -115,6 +115,7 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
       });
       updateNodeData(nodeId, { bomRatios: initialized });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- incomingEdgeIds already captures the same signal as incomingReal (derived from it); adding incomingReal would cause infinite loops
   }, [nodeId, incomingEdgeIds, data.bomRatios, updateNodeData]);
 
   if (incomingReal.length < 2) return null;
@@ -218,6 +219,7 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
 
   // Sync local state when data prop changes (e.g., after updateNodeData recalculates results)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync-from-props pattern; data is the only signal that should trigger a reset
     setName(data.name);
     setRawValues({
       throughputRate: String(data.throughputRate),
