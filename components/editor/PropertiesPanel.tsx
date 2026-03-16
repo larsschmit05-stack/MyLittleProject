@@ -96,11 +96,26 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
   const incomingReal = edges.filter((e) => e.target === nodeId && !e.data?.isScrap);
+  const incomingEdgeIds = incomingReal.map((e) => e.id).sort().join(',');
 
   const [rawValues, setRawValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(incomingReal.map((e) => [e.id, String(data.bomRatios?.[e.id] ?? 1)]))
   );
   const [invalidEdges, setInvalidEdges] = useState<Set<string>>(new Set());
+
+  // Auto-initialize missing BOM ratios to 1 when component mounts or edges change
+  useEffect(() => {
+    if (incomingReal.length < 2) return;
+
+    const missingEdges = incomingReal.filter((e) => !data.bomRatios?.[e.id]);
+    if (missingEdges.length > 0) {
+      const initialized: Record<string, number> = { ...(data.bomRatios ?? {}) };
+      missingEdges.forEach((e) => {
+        initialized[e.id] = 1;
+      });
+      updateNodeData(nodeId, { bomRatios: initialized });
+    }
+  }, [nodeId, incomingEdgeIds, data.bomRatios, updateNodeData]);
 
   if (incomingReal.length < 2) return null;
 
