@@ -1,7 +1,7 @@
 'use client';
 
 import 'reactflow/dist/style.css';
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -13,7 +13,8 @@ import ReactFlow, {
 import SourceNode from './nodes/SourceNode';
 import ProcessNode from './nodes/ProcessNode';
 import SinkNode from './nodes/SinkNode';
-import { isValidConnection as checkConnection, validateGraph } from '../../lib/flow/validation';
+import ScrapAwareEdge from './edges/ScrapAwareEdge';
+import { isValidConnection as checkConnection } from '../../lib/flow/validation';
 import useFlowStore from '../../store/useFlowStore';
 import { useCanvasInteractions, SNAP_GRID } from './useCanvasInteractions';
 
@@ -23,12 +24,17 @@ const nodeTypes = {
   sink: SinkNode,
 };
 
+const edgeTypes = {
+  default: ScrapAwareEdge,
+};
+
 function FlowCanvas() {
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
   const onConnect = useFlowStore((s) => s.onConnect);
+  const graphStatus = useFlowStore((s) => s.validationResult);
 
   const {
     onNodeClick,
@@ -42,8 +48,6 @@ function FlowCanvas() {
     (connection: Connection) => checkConnection(connection, nodes, edges),
     [nodes, edges]
   );
-
-  const graphStatus = useMemo(() => validateGraph(nodes, edges), [nodes, edges]);
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -59,6 +63,7 @@ function FlowCanvas() {
         onDragOver={onDragOver}
         onDrop={onDrop}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         snapToGrid
         snapGrid={SNAP_GRID}
         fitView
@@ -80,18 +85,18 @@ function FlowCanvas() {
               padding: '6px 10px',
               borderRadius: '6px',
               fontSize: '12px',
-              background: graphStatus.isValid ? 'var(--color-healthy)' : 'var(--color-bg-primary)',
+              background: graphStatus?.isValid ? 'var(--color-healthy)' : 'var(--color-bg-primary)',
               border: '1px solid',
-              borderColor: graphStatus.isValid ? 'var(--color-healthy)' : 'var(--color-border)',
-              color: graphStatus.isValid ? '#fff' : 'var(--color-text-secondary)',
-              maxWidth: '240px',
+              borderColor: graphStatus?.isValid ? 'var(--color-healthy)' : 'var(--color-border)',
+              color: graphStatus?.isValid ? '#fff' : 'var(--color-text-secondary)',
+              maxWidth: '360px',
             }}
           >
             {nodes.length === 0
               ? 'Drag nodes onto the canvas to begin'
-              : graphStatus.isValid
+              : graphStatus?.isValid
                 ? 'Valid model'
-                : graphStatus.errors[0]}
+                : graphStatus?.errors[0] ?? 'Drag nodes onto the canvas to begin'}
           </div>
         </Panel>
       </ReactFlow>

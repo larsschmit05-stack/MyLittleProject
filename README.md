@@ -28,13 +28,20 @@ ERP systems address some of these problems, but they are often:
 
 This product provides a visual alternative to Excel-based capacity models.
 
-Users model a process by drawing a flow of process steps. Each step contains capacity parameters such as processing rate, efficiency, number of machines, and operating hours.
+Users model a process by drawing a flow of process steps on a canvas. Each step contains capacity parameters such as processing rate, efficiency, number of machines, and operating hours.
+
+The tool supports real-world production networks:
+- **Linear processes:** Raw material → Process → Process → Finished goods
+- **Assemblies:** Multiple sources combine into one component (e.g., 4 units of Part A + 1 unit of Part B → Assembly)
+- **Quality splits:** One process produces multiple outputs (95% good output, 5% scrap/defect)
+- **Byproducts & secondary markets:** Material routed to different customers or secondary uses
+- **Complex networks:** Any combination of merges and splits (e.g., Assembly → Testing → 95% pass + 5% rework)
 
 Based on demand and process configuration, the system calculates:
 
-- required throughput
+- required throughput at each step
 - utilization per process step
-- the process bottleneck
+- the process bottleneck (the step that limits total system output)
 
 Canvas status thresholds use utilization bands to surface risk quickly:
 
@@ -134,24 +141,26 @@ Infrastructure:
 
 ## Guidance for Developers and Coding Agents
 
-This project is a deterministic capacity modeling tool, not a general simulation platform.
+This project is a deterministic capacity modeling tool for real-world production networks, not a general simulation platform.
 
 When working on the product, preserve these core assumptions:
 
-- the primary workflow is drawing a process flow on a canvas
-- demand is entered for the final output
-- the system derives required throughput across upstream steps
+- the primary workflow is drawing a process flow on a canvas (including merges and splits)
+- demand is entered one time for the final output
+- the system derives required throughput across all upstream steps
 - utilization and bottlenecks are core outputs
-- V1 should remain lightweight and easy to understand
+- the tool remains lightweight and models actual production patterns (assemblies, quality loss, byproducts)
+- no complex optimization or stochastic simulation
 
-Avoid adding features that imply simulation or optimization unless they are explicitly planned for a later version.
+Avoid adding features that imply multi-product optimization, rework loops, or scheduling logic unless explicitly planned for a later version.
 
 ## Development Goal
 
-The goal of this project is to create a simple and fast capacity modeling tool that helps organizations understand process constraints and bottlenecks without the complexity of Excel models or ERP systems.
+The goal of this project is to create a simple and fast capacity modeling tool for real-world production networks. It helps organizations understand process constraints and bottlenecks without the complexity of Excel models or ERP systems.
 
 The product prioritizes:
 
-- visual modeling
-- fast scenario testing
-- clear operational insight
+- **Visual modeling:** Draw your actual production flow, including assemblies, splits, and byproducts
+- **Fast scenario testing:** Instantly see the impact of "what-if" changes (add a machine, reduce scrap, change demand)
+- **Clear operational insight:** Identify bottlenecks, required throughput, and capacity utilization at a glance
+- **Lightweight:** No training required; no enterprise infrastructure needed

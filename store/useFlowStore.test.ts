@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import useFlowStore from './useFlowStore';
-import type { FlowNode, SerializedModel } from '../types/flow';
+import type { FlowNode, FlowProcessNode, SerializedModel, SourceNodeData, ProcessNodeData } from '../types/flow';
 
 // ─── Persistence mocks ────────────────────────────────────────────────────────
 
@@ -242,5 +242,200 @@ describe('loadModel', () => {
     const s = useFlowStore.getState();
     expect(s.savedModelId).toBe('id-2');
     expect(s.globalDemand).toBe(42);
+  });
+});
+
+// ─── updateSourceNodeData ─────────────────────────────────────────────────────
+
+describe('updateSourceNodeData', () => {
+  it('updates outputMaterial on a source node', () => {
+    useFlowStore.getState().addNode(makeSourceNode('src-1'));
+    useFlowStore.getState().updateSourceNodeData('src-1', { outputMaterial: 'Raw Steel' });
+
+    const node = useFlowStore.getState().nodes.find(n => n.id === 'src-1');
+    expect((node?.data as SourceNodeData).outputMaterial).toBe('Raw Steel');
+  });
+
+  it('does not affect process nodes', () => {
+    const processNode: FlowProcessNode = {
+      id: 'proc-1',
+      type: 'process',
+      position: { x: 0, y: 0 },
+      data: { name: 'P', throughputRate: 10, availableTime: 8, yield: 1, numberOfResources: 1, conversionRatio: 1 },
+    };
+    useFlowStore.getState().addNode(processNode);
+    useFlowStore.getState().updateSourceNodeData('proc-1', { outputMaterial: 'X' });
+
+    const node = useFlowStore.getState().nodes.find(n => n.id === 'proc-1');
+    // process node should be unchanged — updateSourceNodeData only targets source nodes
+    expect((node?.data as unknown as Record<string, unknown>).outputMaterial).toBeUndefined();
+  });
+});
+
+// ─── BOM cleanup on edge removal ─────────────────────────────────────────────
+
+describe('onEdgesChange — BOM cleanup', () => {
+  function makeProcessNode(id: string, bomRatios?: Record<string, number>): FlowProcessNode {
+    return {
+      id,
+      type: 'process',
+      position: { x: 0, y: 0 },
+      data: { name: id, throughputRate: 10, availableTime: 8, yield: 1, numberOfResources: 1, conversionRatio: 1, bomRatios },
+    };
+  }
+
+  it('removes stale bomRatios key when its incoming edge is deleted', () => {
+    useFlowStore.getState().addNode(makeSourceNode('src-1'));
+    useFlowStore.getState().addNode(makeProcessNode('proc-1', { 'e1': 2 }));
+    useFlowStore.setState({
+      edges: [{ id: 'e1', source: 'src-1', target: 'proc-1' }],
+    });
+
+    useFlowStore.getState().onEdgesChange([{ type: 'remove', id: 'e1' }]);
+
+    const proc = useFlowStore.getState().nodes.find(n => n.id === 'proc-1') as FlowProcessNode;
+    expect(proc.data.bomRatios).toBeUndefined();
+  });
+
+  it('normalizes empty bomRatios to undefined after all keys removed', () => {
+    useFlowStore.getState().addNode(makeSourceNode('src-1'));
+    useFlowStore.getState().addNode(makeProcessNode('proc-1', { 'e1': 3 }));
+    useFlowStore.setState({
+      edges: [{ id: 'e1', source: 'src-1', target: 'proc-1' }],
+    });
+
+    useFlowStore.getState().onEdgesChange([{ type: 'remove', id: 'e1' }]);
+
+    const proc = useFlowStore.getState().nodes.find(n => n.id === 'proc-1') as FlowProcessNode;
+    expect(proc.data.bomRatios).toBeUndefined();
+  });
+
+  it('only removes keys for edges targeting that specific node', () => {
+    useFlowStore.getState().addNode(makeSourceNode('src-1'));
+    useFlowStore.getState().addNode(makeProcessNode('proc-a', { 'e1': 2 }));
+    useFlowStore.getState().addNode(makeProcessNode('proc-b', { 'e2': 4 }));
+    useFlowStore.setState({
+      edges: [
+        { id: 'e1', source: 'src-1', target: 'proc-a' },
+        { id: 'e2', source: 'src-1', target: 'proc-b' },
+      ],
+    });
+
+    // Remove only e1 (targets proc-a)
+    useFlowStore.getState().onEdgesChange([{ type: 'remove', id: 'e1' }]);
+
+    const procA = useFlowStore.getState().nodes.find(n => n.id === 'proc-a') as FlowProcessNode;
+    const procB = useFlowStore.getState().nodes.find(n => n.id === 'proc-b') as FlowProcessNode;
+    expect(procA.data.bomRatios).toBeUndefined();
+    expect(procB.data.bomRatios).toEqual({ 'e2': 4 }); // untouched
+  });
+
+  it('retains remaining bomRatios keys when only one of several edges is removed', () => {
+    useFlowStore.getState().addNode(makeSourceNode('src-1'));
+    useFlowStore.getState().addNode(makeSourceNode('src-2'));
+    useFlowStore.getState().addNode(makeProcessNode('proc-1', { 'e1': 2, 'e2': 3 }));
+    useFlowStore.setState({
+      edges: [
+        { id: 'e1', source: 'src-1', target: 'proc-1' },
+        { id: 'e2', source: 'src-2', target: 'proc-1' },
+      ],
+    });
+
+    useFlowStore.getState().onEdgesChange([{ type: 'remove', id: 'e1' }]);
+
+    const proc = useFlowStore.getState().nodes.find(n => n.id === 'proc-1') as FlowProcessNode;
+    expect(proc.data.bomRatios).toEqual({ 'e2': 3 });
+  });
+});
+
+// ─── getSerializedModel — edge data round-trip ────────────────────────────────
+
+describe('getSerializedModel — edge data', () => {
+  it('includes edge data (isScrap) in serialized output', () => {
+    useFlowStore.setState({
+      edges: [{ id: 'e1', source: 'src', target: 'sink', data: { isScrap: true } }],
+    });
+
+    const model = useFlowStore.getState().getSerializedModel();
+    expect(model.edges[0].data).toEqual({ isScrap: true });
+  });
+
+  it('includes bomRatios and outputMaterial in serialized nodes', () => {
+    const processNode: FlowProcessNode = {
+      id: 'proc-1',
+      type: 'process',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'P', throughputRate: 10, availableTime: 8, yield: 1,
+        numberOfResources: 1, conversionRatio: 1,
+        bomRatios: { 'e1': 4 },
+        outputMaterial: 'Widget',
+      },
+    };
+    useFlowStore.getState().addNode(processNode);
+
+    const model = useFlowStore.getState().getSerializedModel();
+    const serialized = model.nodes.find(n => n.id === 'proc-1');
+    expect((serialized?.data as ProcessNodeData).bomRatios).toEqual({ 'e1': 4 });
+    expect((serialized?.data as ProcessNodeData).outputMaterial).toBe('Widget');
+  });
+});
+
+// ─── scenario switch — new V1.5 fields survive round-trip ────────────────────
+
+describe('scenario switch — V1.5 fields survive round-trip', () => {
+  it('bomRatios on process node survives duplicate → switch → switch back', () => {
+    const processNode: FlowProcessNode = {
+      id: 'proc-1',
+      type: 'process',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'P', throughputRate: 10, availableTime: 8, yield: 1,
+        numberOfResources: 1, conversionRatio: 1,
+        bomRatios: { 'e1': 2 },
+      },
+    };
+    useFlowStore.getState().addNode(processNode);
+
+    useFlowStore.getState().duplicateActiveScenario('What-If A');
+    const whatIfId = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().switchScenario(whatIfId);
+    useFlowStore.getState().switchScenario('baseline');
+
+    const node = useFlowStore.getState().nodes.find(n => n.id === 'proc-1') as FlowProcessNode;
+    expect(node.data.bomRatios).toEqual({ 'e1': 2 });
+  });
+
+  it('isScrap on edge survives scenario switch', () => {
+    // We need to trigger syncActiveScenario, so we use an action like addNode
+    // or we can just call setGlobalDemand which is a safe no-op for this test
+    useFlowStore.setState({
+      edges: [{ id: 'e1', source: 'src', target: 'sink', data: { isScrap: true } }],
+    });
+    useFlowStore.getState().setGlobalDemand(0);
+
+    useFlowStore.getState().duplicateActiveScenario('What-If A');
+    const whatIfId = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().switchScenario(whatIfId);
+    useFlowStore.getState().switchScenario('baseline');
+
+    const edge = useFlowStore.getState().edges.find(e => e.id === 'e1');
+    expect(edge?.data?.isScrap).toBe(true);
+  });
+
+  it('outputMaterial on source node survives scenario switch', () => {
+    useFlowStore.getState().addNode(makeSourceNode('src-1'));
+    useFlowStore.getState().updateSourceNodeData('src-1', { outputMaterial: 'Raw Steel' });
+
+    useFlowStore.getState().duplicateActiveScenario('What-If A');
+    const whatIfId = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().switchScenario(whatIfId);
+    useFlowStore.getState().switchScenario('baseline');
+
+    const node = useFlowStore.getState().nodes.find(n => n.id === 'src-1');
+    expect((node?.data as SourceNodeData).outputMaterial).toBe('Raw Steel');
   });
 });

@@ -31,6 +31,7 @@ export default function PersistenceControls() {
 
   useEffect(() => {
     if (saveError) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing external Zustand error into local status display
       setStatus(saveError);
       const t = setTimeout(() => setStatus(null), 4000);
       return () => clearTimeout(t);

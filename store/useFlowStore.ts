@@ -8,8 +8,8 @@ import {
   NodeChange,
   EdgeChange,
 } from 'reactflow';
-import { isValidConnection as checkConnection } from '../lib/flow/validation';
-import { calculateFlow } from '../utils/calculations';
+import { isValidConnection as checkConnection, validateGraph, ValidationResult } from '../lib/flow/validation';
+import { calculateFlowDAG } from '../utils/calculations';
 import { insertModel, updateModel, fetchModel } from '../lib/persistence';
 import type {
   FlowNode,
@@ -18,16 +18,19 @@ import type {
   DerivedResults,
   SerializedModel,
   ProcessNodeData,
+  SourceNodeData,
   SerializedNode,
   Scenario,
+  EdgeData,
 } from '../types/flow';
 
 interface FlowState {
   nodes: FlowNode[];
-  edges: Edge[];
+  edges: Edge<EdgeData>[];
   selectedElement: SelectedElement;
   globalDemand: number;
   derivedResults: DerivedResults;
+  validationResult: ValidationResult | null;
   scenarios: Scenario[];
   activeScenarioId: string;
   savedModelId: string | null;
@@ -42,6 +45,8 @@ interface FlowActions {
   onConnect: (connection: Connection) => void;
   addNode: (node: FlowNode) => void;
   updateNodeData: (nodeId: string, data: Partial<ProcessNodeData>) => void;
+  updateSourceNodeData: (nodeId: string, data: Partial<SourceNodeData>) => void;
+  updateEdgeData: (edgeId: string, data: Partial<EdgeData>) => void;
   setGlobalDemand: (demand: number) => void;
   selectElement: (element: SelectedElement) => void;
   clearSelection: () => void;
@@ -137,6 +142,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
     selectedElement: null,
     globalDemand: 0,
     derivedResults: null,
+    validationResult: null,
     scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
     activeScenarioId: BASELINE_ID,
     savedModelId: null,
@@ -159,7 +165,8 @@ const useFlowStore = create<FlowStore>((set, get) => {
       });
 
       if (changes.some((c) => c.type === 'remove')) {
-        set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+        const { nodes: n, edges: e } = get();
+        set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       }
 
       syncActiveScenario();
@@ -167,19 +174,48 @@ const useFlowStore = create<FlowStore>((set, get) => {
 
     onEdgesChange: (changes) => {
       const currentState = get();
-      const nextEdges = applyEdgeChanges(changes, currentState.edges);
+
+      const removedEdgeIds = new Set(
+        changes.filter(c => c.type === 'remove').map(c => c.id)
+      );
+      let nextNodes = currentState.nodes;
+      if (removedEdgeIds.size > 0) {
+        // Build a per-target map of which edge IDs were removed from that node
+        const removedByTarget = new Map<string, Set<string>>();
+        for (const e of currentState.edges) {
+          if (removedEdgeIds.has(e.id)) {
+            if (!removedByTarget.has(e.target)) removedByTarget.set(e.target, new Set());
+            removedByTarget.get(e.target)!.add(e.id);
+          }
+        }
+        nextNodes = currentState.nodes.map(n => {
+          if (n.type !== 'process') return n;
+          const edgesToRemove = removedByTarget.get(n.id);
+          if (!edgesToRemove) return n;
+          const { bomRatios } = n.data;
+          if (!bomRatios) return n;
+          const cleaned = { ...bomRatios };
+          edgesToRemove.forEach(id => delete cleaned[id]);
+          const next = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+          return { ...n, data: { ...n.data, bomRatios: next } } as FlowNode;
+        });
+      }
+
+      const nextEdges = applyEdgeChanges(changes, currentState.edges) as Edge<EdgeData>[];
 
       set({
+        nodes: nextNodes,
         edges: nextEdges,
         selectedElement: reconcileSelection(
           currentState.selectedElement,
-          currentState.nodes,
+          nextNodes,
           nextEdges
         ),
       });
 
       if (changes.some((c) => c.type === 'add' || c.type === 'remove')) {
-        set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+        const { nodes: n, edges: e } = get();
+        set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       }
 
       syncActiveScenario();
@@ -188,14 +224,46 @@ const useFlowStore = create<FlowStore>((set, get) => {
     onConnect: (connection) => {
       const { nodes, edges } = get();
       if (!checkConnection(connection, nodes, edges)) return;
-      set({ edges: addEdge(connection, edges) });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      const newEdges = addEdge(connection, edges);
+      set({ edges: newEdges });
+
+      // Auto-initialize BOM ratios for merge nodes
+      const targetNode = nodes.find((n) => n.id === connection.target);
+      if (targetNode && targetNode.type === 'process') {
+        const incomingRealEdges = newEdges.filter(
+          (e) => e.target === connection.target && !e.data?.isScrap
+        );
+        if (incomingRealEdges.length >= 2) {
+          const targetData = targetNode.data as ProcessNodeData;
+          const missingEdgeIds = incomingRealEdges
+            .filter((e) => !targetData.bomRatios?.[e.id])
+            .map((e) => e.id);
+
+          if (missingEdgeIds.length > 0) {
+            const initialized = { ...(targetData.bomRatios ?? {}) };
+            missingEdgeIds.forEach((edgeId) => {
+              initialized[edgeId] = 1;
+            });
+            set({
+              nodes: nodes.map((n) =>
+                n.id === connection.target && n.type === 'process'
+                  ? { ...n, data: { ...n.data, bomRatios: initialized } }
+                  : n
+              ) as FlowNode[],
+            });
+          }
+        }
+      }
+
+      const { nodes: n, edges: e } = get();
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
     addNode: (node) => {
       set({ nodes: [...get().nodes, node] });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      const { nodes: n, edges: e } = get();
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
@@ -207,13 +275,37 @@ const useFlowStore = create<FlowStore>((set, get) => {
             : n
         ) as FlowNode[],
       });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      const { nodes: n, edges: e } = get();
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+      syncActiveScenario();
+    },
+
+    updateSourceNodeData: (nodeId, data) => {
+      set({
+        nodes: get().nodes.map((n) =>
+          n.id === nodeId && n.type === 'source'
+            ? { ...n, data: { ...n.data, ...data } }
+            : n
+        ) as FlowNode[],
+      });
+      syncActiveScenario();
+    },
+
+    updateEdgeData: (edgeId, data) => {
+      set({
+        edges: get().edges.map((e) =>
+          e.id === edgeId ? { ...e, data: { ...e.data, ...data } } : e
+        ),
+      });
+      const { nodes: n, edges: e } = get();
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
     setGlobalDemand: (demand) => {
       set({ globalDemand: demand });
-      set({ derivedResults: calculateFlow(get().getSerializedModel()) });
+      const { nodes: n, edges: e } = get();
+      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
@@ -229,7 +321,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
       const { nodes, edges, globalDemand } = get();
       return {
         nodes: nodes.map(serializeNode),
-        edges: edges.map(({ id, source, target }) => ({ id, source, target })),
+        edges: edges.map(({ id, source, target, data }) => ({ id, source, target, data })),
         globalDemand,
       };
     },
@@ -253,7 +345,8 @@ const useFlowStore = create<FlowStore>((set, get) => {
         globalDemand: model.globalDemand,
         activeScenarioId: id,
         selectedElement: null,
-        derivedResults: calculateFlow(model),
+        derivedResults: calculateFlowDAG(model),
+        validationResult: validateGraph(nextNodes, nextEdges),
       });
     },
 
@@ -298,6 +391,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         selectedElement: null,
         globalDemand: 0,
         derivedResults: null,
+        validationResult: null,
         scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
         activeScenarioId: BASELINE_ID,
         savedModelId: null,
@@ -315,6 +409,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         selectedElement: null,
         globalDemand: 0,
         derivedResults: null,
+        validationResult: null,
         savedModelId: null,
         savedModelName: '',
         scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
@@ -331,7 +426,8 @@ const useFlowStore = create<FlowStore>((set, get) => {
           nodes: nextNodes,
           edges: nextEdges,
           globalDemand: model.globalDemand,
-          derivedResults: calculateFlow(model),
+          derivedResults: calculateFlowDAG(model),
+          validationResult: validateGraph(nextNodes, nextEdges),
           selectedElement: null,
           savedModelId: id,
           savedModelName: row.name,

@@ -67,7 +67,12 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
         </div>
       )}
       <div style={nodeLabelStyle}>Process</div>
-      <div style={{ fontWeight: 600, marginBottom: '8px' }}>{data.name}</div>
+      <div style={{ fontWeight: 600, marginBottom: '4px' }}>{data.name}</div>
+      {data.outputMaterial && (
+        <div style={{ fontSize: '10px', color: 'var(--color-text-label)', marginBottom: '4px' }}>
+          {data.outputMaterial}
+        </div>
+      )}
       
       {nodeResult && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -79,7 +84,7 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
             <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>CAP</span>
             <span style={nodeValueStyle}>{formatNumberShort(nodeResult.effectiveCapacity)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px', borderTop: '1px solid var(--color-border)', paddingTop: '4px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '4px' }}>
             <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>UTIL</span>
             <span style={{ ...nodeValueStyle, color: statusColor }}>{fmtUtil(nodeResult.utilization)}</span>
           </div>
@@ -87,14 +92,14 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
       )}
 
       {isBottleneck && (
-        <div style={{ 
+        <div style={{
           position: 'absolute',
-          bottom: '-18px',
+          top: '-20px',
           left: '50%',
           transform: 'translateX(-50%)',
           fontSize: '9px',
           fontWeight: 700,
-          color: 'var(--color-action)',
+          color: 'var(--color-bottleneck)',
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
           whiteSpace: 'nowrap'

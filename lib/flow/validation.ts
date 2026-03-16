@@ -1,8 +1,26 @@
 import type { Connection, Edge, Node } from 'reactflow';
+import type { EdgeData, ProcessNodeData } from '../../types/flow';
+
+function getNodeDisplayName(node: Node): string {
+  return (node.data as ProcessNodeData)?.name
+    || (node.data as Record<string, unknown>)?.label as string
+    || node.id;
+}
+
+export type ValidationErrorCategory =
+  | 'cycle'
+  | 'missing_bom'
+  | 'invalid_ratio_sum'
+  | 'invalid_sink_count'
+  | 'orphaned_node'
+  | 'invalid_scrap_target'
+  | 'missing_output_material'
+  | 'mixed_sink_inputs';
 
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
+  categories: ValidationErrorCategory[];
 }
 
 type NodeType = 'source' | 'process' | 'sink';
@@ -51,47 +69,34 @@ function canReach(from: string, target: string, edges: Edge[]): boolean {
   return false;
 }
 
-function hasSingleLinearPath(nodes: Node[], edges: Edge[]): boolean {
-  const source = nodes.find((node) => node.type === 'source');
-  const sink = nodes.find((node) => node.type === 'sink');
+function hasCycle(nodes: Node[], realEdges: Edge[]): boolean {
+  const adj = new Map<string, string[]>();
+  for (const n of nodes) adj.set(n.id, []);
+  for (const e of realEdges) adj.get(e.source)?.push(e.target);
 
-  if (!source || !sink) {
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<string, number>(nodes.map(n => [n.id, WHITE]));
+
+  function dfs(u: string): boolean {
+    color.set(u, GRAY);
+    for (const v of (adj.get(u) ?? [])) {
+      if (color.get(v) === GRAY) return true;
+      if (color.get(v) === WHITE && dfs(v)) return true;
+    }
+    color.set(u, BLACK);
     return false;
   }
 
-  const visited = new Set<string>();
-  let currentId: string | undefined = source.id;
-
-  while (currentId) {
-    if (visited.has(currentId)) {
-      return false;
-    }
-
-    visited.add(currentId);
-
-    const outgoingEdges = edges.filter((edge) => edge.source === currentId);
-    if (outgoingEdges.length === 0) {
-      return currentId === sink.id && visited.size === nodes.length;
-    }
-
-    if (outgoingEdges.length > 1) {
-      return false;
-    }
-
-    currentId = outgoingEdges[0].target;
-  }
-
-  return false;
+  return nodes.some(n => color.get(n.id) === WHITE && dfs(n.id));
 }
 
 export function isValidConnection(
   connection: Connection,
   nodes: Node[],
-  edges: Edge[]
+  edges: Edge<EdgeData>[]
 ): boolean {
   const { source, target } = connection;
 
-  // Self-connection
   if (source === target) return false;
   if (!source || !target) return false;
 
@@ -111,73 +116,191 @@ export function isValidConnection(
   // Valid type pair check
   if (!VALID_CONNECTIONS[sourceType]?.includes(targetType)) return false;
 
-  // No branching: source node already has an outgoing edge
-  if (edges.some((e) => e.source === source)) return false;
-
-  // No merging: target node already has an incoming edge
-  if (edges.some((e) => e.target === target)) return false;
-
-  // No cycles: check if target can already reach source
-  if (canReach(target, source, edges)) return false;
-
   // No duplicate edges between the same nodes
   if (edges.some((e) => e.source === source && e.target === target)) return false;
+
+  // No cycles: check if target can already reach source (via real edges only)
+  const realEdges = edges.filter(e => !e.data?.isScrap);
+  if (canReach(target, source, realEdges)) return false;
 
   return true;
 }
 
-export function validateGraph(nodes: Node[], edges: Edge[]): ValidationResult {
+export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): ValidationResult {
   const errors: string[] = [];
+  const categories: ValidationErrorCategory[] = [];
 
   if (nodes.length === 0) {
-    return { isValid: false, errors: ['Drag nodes onto the canvas to begin'] };
+    return { isValid: false, errors: ['Drag nodes onto the canvas to begin'], categories: [] };
   }
 
   const sources = nodes.filter((n) => n.type === 'source');
   const sinks = nodes.filter((n) => n.type === 'sink');
-  const processes = nodes.filter((n) => n.type === 'process');
 
-  if (sources.length !== 1) {
-    errors.push('Model must contain exactly one Source');
+  if (sources.length === 0) {
+    errors.push('Model must contain at least one Source');
   }
+
   if (sinks.length !== 1) {
-    errors.push('Model must contain exactly one Sink');
+    errors.push('Model must have exactly one Sink');
+    categories.push('invalid_sink_count');
   }
 
-  if (sources.length === 1) {
-    const src = sources[0];
-    const incoming = edges.filter((e) => e.target === src.id).length;
-    const outgoing = edges.filter((e) => e.source === src.id).length;
-    if (incoming > 0 || outgoing !== 1) {
-      errors.push('Source must have exactly one outgoing connection');
+  if (errors.length > 0) {
+    return { isValid: false, errors, categories };
+  }
+
+  const realEdges = edges.filter(e => !e.data?.isScrap);
+  const scrapEdges = edges.filter(e => e.data?.isScrap === true);
+
+  // Scrap dead-end nodes: targeted only by scrap edges, no real incoming/outgoing
+  const scrapTargetIds = new Set(scrapEdges.map(e => e.target));
+  const scrapDeadEndIds = new Set(
+    [...scrapTargetIds].filter(id =>
+      !realEdges.some(e => e.target === id) &&
+      !realEdges.some(e => e.source === id)
+    )
+  );
+
+  // Cycle detection
+  if (hasCycle(nodes, realEdges)) {
+    errors.push('A cycle was detected in the graph');
+    categories.push('cycle');
+    return { isValid: false, errors, categories };
+  }
+
+  const sinkId = sinks[0].id;
+
+  // Forward reachability: all non-source, non-scrap-dead-end nodes must be reachable from some source
+  const forwardReachable = new Set<string>();
+  const fwQueue = sources.map(s => s.id);
+  for (const id of fwQueue) forwardReachable.add(id);
+  while (fwQueue.length > 0) {
+    const cur = fwQueue.shift()!;
+    for (const e of realEdges) {
+      if (e.source === cur && !forwardReachable.has(e.target)) {
+        forwardReachable.add(e.target);
+        fwQueue.push(e.target);
+      }
     }
   }
 
-  if (sinks.length === 1) {
-    const snk = sinks[0];
-    const incoming = edges.filter((e) => e.target === snk.id).length;
-    const outgoing = edges.filter((e) => e.source === snk.id).length;
-    if (incoming !== 1 || outgoing > 0) {
-      errors.push('Sink must have exactly one incoming connection');
+  const notForwardReachable = nodes.filter(n =>
+    !forwardReachable.has(n.id) &&
+    n.type !== 'source' &&
+    !scrapDeadEndIds.has(n.id)
+  );
+  if (notForwardReachable.length > 0) {
+    const names = notForwardReachable.map(getNodeDisplayName).join(', ');
+    errors.push(`Not reachable from any Source: ${names}`);
+    categories.push('orphaned_node');
+  }
+
+  // Backward reachability: all non-sink, non-scrap-dead-end nodes must have a path to sink
+  const backwardReachable = new Set<string>();
+  const bwQueue = [sinkId];
+  for (const id of bwQueue) backwardReachable.add(id);
+  while (bwQueue.length > 0) {
+    const cur = bwQueue.shift()!;
+    for (const e of realEdges) {
+      if (e.target === cur && !backwardReachable.has(e.source)) {
+        backwardReachable.add(e.source);
+        bwQueue.push(e.source);
+      }
     }
   }
 
-  const processesInvalid = processes.some((p) => {
-    const incoming = edges.filter((e) => e.target === p.id).length;
-    const outgoing = edges.filter((e) => e.source === p.id).length;
-    return incoming !== 1 || outgoing !== 1;
-  });
-  if (processesInvalid) {
-    errors.push('All Process nodes must have one input and one output');
+  const notBackwardReachable = nodes.filter(n =>
+    !backwardReachable.has(n.id) &&
+    n.type !== 'sink' &&
+    !scrapDeadEndIds.has(n.id)
+  );
+  if (notBackwardReachable.length > 0) {
+    const names = notBackwardReachable.map(getNodeDisplayName).join(', ');
+    errors.push(`No path to Sink: ${names}`);
+    categories.push('orphaned_node');
   }
 
-  if (errors.length === 0 && edges.length !== nodes.length - 1) {
-    errors.push('Graph must form one continuous linear path');
+  // Scrap edge targeting the Sink
+  if (scrapEdges.some(e => e.target === sinkId)) {
+    errors.push('A scrap edge cannot target the Sink');
+    categories.push('invalid_scrap_target');
   }
 
-  if (errors.length === 0 && !hasSingleLinearPath(nodes, edges)) {
-    errors.push('Graph must form one continuous linear path');
+  // Scrap edge target has outgoing real edges
+  for (const scrapEdge of scrapEdges) {
+    const targetId = scrapEdge.target;
+    if (realEdges.some(e => e.source === targetId)) {
+      const targetNode = nodes.find(n => n.id === targetId);
+      const name = targetNode ? getNodeDisplayName(targetNode) : targetId;
+      errors.push(`A scrap path from "${name}" connects to a node with further outputs`);
+      categories.push('invalid_scrap_target');
+    }
   }
 
-  return { isValid: errors.length === 0, errors };
+  // Merge nodes: process nodes with ≥2 incoming real edges must have valid bomRatios
+  const processNodes = nodes.filter(n => n.type === 'process');
+  for (const pNode of processNodes) {
+    const incomingReal = realEdges.filter(e => e.target === pNode.id);
+    if (incomingReal.length >= 2) {
+      const data = pNode.data as ProcessNodeData;
+      const bomRatios = data?.bomRatios;
+      const hasMissing = incomingReal.some(e => {
+        const ratio = bomRatios?.[e.id];
+        return ratio === undefined || ratio === null || ratio <= 0;
+      });
+      if (hasMissing) {
+        const name = data?.name ?? pNode.id;
+        errors.push(`Merge node "${name}" has missing or invalid BOM ratios`);
+        categories.push('missing_bom');
+      }
+    }
+  }
+
+  // Split nodes: any source/process node with ≥2 total outgoing edges (real + scrap) must have
+  // splitRatios on ALL outgoing edges summing to 100% ± 1%
+  const outputNodes = nodes.filter(n => n.type === 'source' || n.type === 'process');
+  for (const node of outputNodes) {
+    const allOutgoing = edges.filter(e => e.source === node.id);
+    if (allOutgoing.length >= 2) {
+      const ratios = allOutgoing.map(e => e.data?.splitRatio ?? 0);
+      const sum = ratios.reduce((a, b) => a + b, 0);
+      const hasMissing = ratios.some(r => r === 0);
+      const isOutOfRange = sum < 99 || sum > 101;
+      const name = getNodeDisplayName(node);
+
+      if (hasMissing) {
+        errors.push(`Split node "${name}" has missing split ratios`);
+        categories.push('invalid_ratio_sum');
+      } else if (isOutOfRange) {
+        errors.push(`Split node "${name}" has ratios summing to ${sum.toFixed(1)}%, expected 100% ± 1%`);
+        categories.push('invalid_ratio_sum');
+      }
+    }
+  }
+
+  // Output Material required on all process nodes
+  for (const pNode of processNodes) {
+    const data = pNode.data as ProcessNodeData;
+    if (!data?.outputMaterial?.trim()) {
+      const name = data?.name ?? pNode.id;
+      errors.push(`Process node "${name}" is missing an Output Material`);
+      categories.push('missing_output_material');
+    }
+  }
+
+  // Sink must receive only one distinct product type
+  const sinkIncoming = realEdges.filter(e => e.target === sinkId);
+  const sinkMaterials = sinkIncoming
+    .map(e => {
+      const srcNode = nodes.find(n => n.id === e.source);
+      return (srcNode?.data as ProcessNodeData)?.outputMaterial?.trim() ?? '';
+    })
+    .filter(m => m !== '');
+  if (new Set(sinkMaterials).size >= 2) {
+    errors.push('Sink accepts only one product. Mark unwanted inputs as scrap or remove them.');
+    categories.push('mixed_sink_inputs');
+  }
+
+  return { isValid: errors.length === 0, errors, categories };
 }
