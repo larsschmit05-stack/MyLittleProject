@@ -187,6 +187,7 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
 
 function ProcessForm({ nodeId, data }: ProcessFormProps) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
+  const edges = useFlowStore((s) => s.edges);
 
   const [name, setName] = useState(data.name);
   const [rawValues, setRawValues] = useState<Record<NumericField, string>>({
@@ -198,6 +199,15 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
   });
   const [invalidFields, setInvalidFields] = useState<Partial<Record<NumericField, string>>>({});
   const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
+
+  // Check if this is a merge node (2+ incoming real edges)
+  const incomingReal = edges.filter((e) => e.target === nodeId && !e.data?.isScrap);
+  const isMergeNode = incomingReal.length >= 2;
+
+  // Hide conversionRatio for merge nodes since BOM ratios replace it
+  const visibleNumericFields = NUMERIC_FIELDS.filter(
+    ({ key }) => !isMergeNode || key !== 'conversionRatio'
+  );
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
@@ -264,7 +274,7 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
         />
       </div>
 
-      {NUMERIC_FIELDS.map(({ key, label }) => (
+      {visibleNumericFields.map(({ key, label }) => (
         <div key={key} style={panelFieldGroupStyle}>
           <label style={panelLabelStyle} htmlFor={`${nodeId}-${key}`}>
             {label}
