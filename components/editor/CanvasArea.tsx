@@ -65,7 +65,6 @@ function FlowCanvas() {
         onDrop={onDrop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        defaultEdgeOptions={{ selectable: true }}
         snapToGrid
         snapGrid={SNAP_GRID}
         fitView

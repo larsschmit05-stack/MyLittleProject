@@ -446,7 +446,7 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
   function handleSplitRatioBlur() {
     const n = parseFloat(rawSplitRatio);
     if (!isFinite(n) || n < 0 || n > 100) {
-      setRawSplitRatio(String(edge.data?.splitRatio ?? ''));
+      setRawSplitRatio(String(edge!.data?.splitRatio ?? ''));
     }
   }
 
