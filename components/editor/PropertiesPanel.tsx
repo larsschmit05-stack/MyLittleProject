@@ -206,7 +206,11 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
 
   // Hide conversionRatio for merge nodes since BOM ratios replace it
   const visibleNumericFields = NUMERIC_FIELDS.filter(
-    ({ key }) => !isMergeNode || key !== 'conversionRatio'
+    ({ key }) => {
+      // Show all fields for non-merge nodes; hide conversionRatio only for merge nodes
+      if (isMergeNode && key === 'conversionRatio') return false;
+      return true;
+    }
   );
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
