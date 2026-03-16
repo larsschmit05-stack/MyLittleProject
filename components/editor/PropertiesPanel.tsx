@@ -203,6 +203,7 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
 function ProcessForm({ nodeId, data }: ProcessFormProps) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
   const edges = useFlowStore((s) => s.edges);
+  const nodes = useFlowStore((s) => s.nodes);
 
   const [name, setName] = useState(data.name);
   const [rawValues, setRawValues] = useState<Record<NumericField, string>>({
@@ -284,7 +285,7 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
   function handleOutputMaterialChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setOutputMaterial(value);
-    updateNodeData(nodeId, { outputMaterial: value || undefined });
+    updateNodeData(nodeId, { outputMaterial: value });
   }
 
   return (
@@ -331,12 +332,31 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
 
       <BomSection nodeId={nodeId} data={data} />
 
+      {incomingReal.length >= 1 && (
+        <div style={{ ...panelFieldGroupStyle, marginTop: '16px' }}>
+          <label style={panelLabelStyle}>Input Material</label>
+          {incomingReal.map((e) => {
+            const srcNode = nodes.find((n) => n.id === e.source);
+            const material = (srcNode?.data as { outputMaterial?: string })?.outputMaterial;
+            const srcName =
+              (srcNode?.data as { name?: string })?.name ??
+              (srcNode?.data as { label?: string })?.label ??
+              e.source;
+            return (
+              <p key={e.id} style={{ margin: '2px 0', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                {incomingReal.length > 1 ? `${srcName}: ` : ''}{material || '—'}
+              </p>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ ...panelFieldGroupStyle, marginTop: '16px' }}>
         <label style={panelLabelStyle} htmlFor={`${nodeId}-outputMaterial`}>
-          Output Material (optional)
+          Output Material *
         </label>
         <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-          What does this node produce? (e.g., &lsquo;Cut Steel&rsquo;, &lsquo;Assembled Unit&rsquo;)
+          What does this node produce?
         </p>
         <input
           id={`${nodeId}-outputMaterial`}

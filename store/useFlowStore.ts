@@ -224,7 +224,37 @@ const useFlowStore = create<FlowStore>((set, get) => {
     onConnect: (connection) => {
       const { nodes, edges } = get();
       if (!checkConnection(connection, nodes, edges)) return;
-      set({ edges: addEdge(connection, edges) });
+      const newEdges = addEdge(connection, edges);
+      set({ edges: newEdges });
+
+      // Auto-initialize BOM ratios for merge nodes
+      const targetNode = nodes.find((n) => n.id === connection.target);
+      if (targetNode && targetNode.type === 'process') {
+        const incomingRealEdges = newEdges.filter(
+          (e) => e.target === connection.target && !e.data?.isScrap
+        );
+        if (incomingRealEdges.length >= 2) {
+          const targetData = targetNode.data as ProcessNodeData;
+          const missingEdgeIds = incomingRealEdges
+            .filter((e) => !targetData.bomRatios?.[e.id])
+            .map((e) => e.id);
+
+          if (missingEdgeIds.length > 0) {
+            const initialized = { ...(targetData.bomRatios ?? {}) };
+            missingEdgeIds.forEach((edgeId) => {
+              initialized[edgeId] = 1;
+            });
+            set({
+              nodes: nodes.map((n) =>
+                n.id === connection.target && n.type === 'process'
+                  ? { ...n, data: { ...n.data, bomRatios: initialized } }
+                  : n
+              ) as FlowNode[],
+            });
+          }
+        }
+      }
+
       const { nodes: n, edges: e } = get();
       set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
