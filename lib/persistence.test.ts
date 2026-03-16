@@ -233,8 +233,6 @@ describe('duplicateModel', () => {
   it('fetches original and inserts a copy with new name', async () => {
     const original = { name: 'Original', data: validModel };
     const mockFetchSingle = vi.fn().mockResolvedValue({ data: original, error: null });
-    const mockFetchEq = vi.fn().mockReturnValue({ single: mockFetchSingle });
-    const mockFetchSelect = vi.fn().mockReturnValue({ eq: mockFetchEq });
     
     const mockInsertSingle = vi.fn().mockResolvedValue({ data: { id: 'copy-id' }, error: null });
     const mockInsertSelect = vi.fn().mockReturnValue({ single: mockInsertSingle });
