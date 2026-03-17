@@ -17,10 +17,17 @@ export type ValidationErrorCategory =
   | 'missing_output_material'
   | 'mixed_sink_inputs';
 
+export interface ValidationError {
+  message: string;
+  category: ValidationErrorCategory;
+  nodeIds: string[];
+}
+
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
   categories: ValidationErrorCategory[];
+  errorDetails: ValidationError[];
 }
 
 type NodeType = 'source' | 'process' | 'sink';
@@ -69,25 +76,37 @@ function canReach(from: string, target: string, edges: Edge[]): boolean {
   return false;
 }
 
-function hasCycle(nodes: Node[], realEdges: Edge[]): boolean {
+/** Returns IDs of nodes participating in cycles, or empty array if acyclic. */
+function findCycleNodeIds(nodes: Node[], realEdges: Edge[]): string[] {
   const adj = new Map<string, string[]>();
   for (const n of nodes) adj.set(n.id, []);
   for (const e of realEdges) adj.get(e.source)?.push(e.target);
 
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<string, number>(nodes.map(n => [n.id, WHITE]));
+  const cycleNodes = new Set<string>();
 
   function dfs(u: string): boolean {
     color.set(u, GRAY);
     for (const v of (adj.get(u) ?? [])) {
-      if (color.get(v) === GRAY) return true;
-      if (color.get(v) === WHITE && dfs(v)) return true;
+      if (color.get(v) === GRAY) {
+        cycleNodes.add(u);
+        cycleNodes.add(v);
+        return true;
+      }
+      if (color.get(v) === WHITE && dfs(v)) {
+        if (color.get(u) === GRAY) cycleNodes.add(u);
+        return true;
+      }
     }
     color.set(u, BLACK);
     return false;
   }
 
-  return nodes.some(n => color.get(n.id) === WHITE && dfs(n.id));
+  nodes.forEach(n => {
+    if (color.get(n.id) === WHITE) dfs(n.id);
+  });
+  return [...cycleNodes];
 }
 
 export function isValidConnection(
@@ -129,25 +148,31 @@ export function isValidConnection(
 export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): ValidationResult {
   const errors: string[] = [];
   const categories: ValidationErrorCategory[] = [];
+  const errorDetails: ValidationError[] = [];
+
+  function addError(message: string, category: ValidationErrorCategory, nodeIds: string[]) {
+    errors.push(message);
+    categories.push(category);
+    errorDetails.push({ message, category, nodeIds });
+  }
 
   if (nodes.length === 0) {
-    return { isValid: false, errors: ['Drag nodes onto the canvas to begin'], categories: [] };
+    return { isValid: false, errors: ['Drag nodes onto the canvas to begin'], categories: [], errorDetails: [] };
   }
 
   const sources = nodes.filter((n) => n.type === 'source');
   const sinks = nodes.filter((n) => n.type === 'sink');
 
   if (sources.length === 0) {
-    errors.push('Model must contain at least one Source');
+    addError('Model must contain at least one Source', 'orphaned_node', []);
   }
 
   if (sinks.length !== 1) {
-    errors.push('Model must have exactly one Sink');
-    categories.push('invalid_sink_count');
+    addError('Model must have exactly one Sink', 'invalid_sink_count', sinks.map(s => s.id));
   }
 
   if (errors.length > 0) {
-    return { isValid: false, errors, categories };
+    return { isValid: false, errors, categories, errorDetails };
   }
 
   const realEdges = edges.filter(e => !e.data?.isScrap);
@@ -163,10 +188,10 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
   );
 
   // Cycle detection
-  if (hasCycle(nodes, realEdges)) {
-    errors.push('A cycle was detected in the graph');
-    categories.push('cycle');
-    return { isValid: false, errors, categories };
+  const cycleNodeIds = findCycleNodeIds(nodes, realEdges);
+  if (cycleNodeIds.length > 0) {
+    addError('A cycle was detected in the graph', 'cycle', cycleNodeIds);
+    return { isValid: false, errors, categories, errorDetails };
   }
 
   const sinkId = sinks[0].id;
@@ -192,8 +217,7 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
   );
   if (notForwardReachable.length > 0) {
     const names = notForwardReachable.map(getNodeDisplayName).join(', ');
-    errors.push(`Not reachable from any Source: ${names}`);
-    categories.push('orphaned_node');
+    addError(`Not reachable from any Source: ${names}`, 'orphaned_node', notForwardReachable.map(n => n.id));
   }
 
   // Backward reachability: all non-sink, non-scrap-dead-end nodes must have a path to sink
@@ -217,14 +241,12 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
   );
   if (notBackwardReachable.length > 0) {
     const names = notBackwardReachable.map(getNodeDisplayName).join(', ');
-    errors.push(`No path to Sink: ${names}`);
-    categories.push('orphaned_node');
+    addError(`No path to Sink: ${names}`, 'orphaned_node', notBackwardReachable.map(n => n.id));
   }
 
   // Scrap edge targeting the Sink
   if (scrapEdges.some(e => e.target === sinkId)) {
-    errors.push('A scrap edge cannot target the Sink');
-    categories.push('invalid_scrap_target');
+    addError('A scrap edge cannot target the Sink', 'invalid_scrap_target', [sinkId]);
   }
 
   // Scrap edge target has outgoing real edges
@@ -233,8 +255,7 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     if (realEdges.some(e => e.source === targetId)) {
       const targetNode = nodes.find(n => n.id === targetId);
       const name = targetNode ? getNodeDisplayName(targetNode) : targetId;
-      errors.push(`A scrap path from "${name}" connects to a node with further outputs`);
-      categories.push('invalid_scrap_target');
+      addError(`A scrap path from "${name}" connects to a node with further outputs`, 'invalid_scrap_target', [targetId]);
     }
   }
 
@@ -251,8 +272,7 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
       });
       if (hasMissing) {
         const name = data?.name ?? pNode.id;
-        errors.push(`Merge node "${name}" has missing or invalid BOM ratios`);
-        categories.push('missing_bom');
+        addError(`Merge node "${name}" has missing or invalid BOM ratios`, 'missing_bom', [pNode.id]);
       }
     }
   }
@@ -270,11 +290,9 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
       const name = getNodeDisplayName(node);
 
       if (hasMissing) {
-        errors.push(`Split node "${name}" has missing split ratios`);
-        categories.push('invalid_ratio_sum');
+        addError(`Split node "${name}" has missing split ratios`, 'invalid_ratio_sum', [node.id]);
       } else if (isOutOfRange) {
-        errors.push(`Split node "${name}" has ratios summing to ${sum.toFixed(1)}%, expected 100% ± 1%`);
-        categories.push('invalid_ratio_sum');
+        addError(`Split node "${name}" has ratios summing to ${sum.toFixed(1)}%, expected 100% ± 1%`, 'invalid_ratio_sum', [node.id]);
       }
     }
   }
@@ -284,8 +302,7 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     const data = pNode.data as ProcessNodeData;
     if (!data?.outputMaterial?.trim()) {
       const name = data?.name ?? pNode.id;
-      errors.push(`Process node "${name}" is missing an Output Material`);
-      categories.push('missing_output_material');
+      addError(`Process node "${name}" is missing an Output Material`, 'missing_output_material', [pNode.id]);
     }
   }
 
@@ -298,9 +315,8 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     })
     .filter(m => m !== '');
   if (new Set(sinkMaterials).size >= 2) {
-    errors.push('Sink accepts only one product. Mark unwanted inputs as scrap or remove them.');
-    categories.push('mixed_sink_inputs');
+    addError('Sink accepts only one product. Mark unwanted inputs as scrap or remove them.', 'mixed_sink_inputs', [sinkId]);
   }
 
-  return { isValid: errors.length === 0, errors, categories };
+  return { isValid: errors.length === 0, errors, categories, errorDetails };
 }

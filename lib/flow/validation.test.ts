@@ -190,15 +190,25 @@ describe('validateGraph — valid graphs', () => {
 // ─── validateGraph — invalid graphs ──────────────────────────────────────────
 
 describe('validateGraph — invalid graphs', () => {
-  it('two sinks → invalid_sink_count', () => {
+  it('two sinks → invalid_sink_count with errorDetails', () => {
     const nodes = [makeNode('s', 'source'), makeNode('p', 'process'), makeNode('k1', 'sink'), makeNode('k2', 'sink')];
     const edges = [makeEdge('e1', 's', 'p'), makeEdge('e2', 'p', 'k1')];
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('invalid_sink_count');
+    expect(result.errorDetails.some(e => e.category === 'invalid_sink_count')).toBe(true);
   });
 
-  it('cycle in real edges → cycle', () => {
+  it('no source → errorDetails entry', () => {
+    const nodes = [makeNode('p', 'process'), makeNode('k', 'sink')];
+    const edges = [makeEdge('e1', 'p', 'k')];
+    const result = validateGraph(nodes, edges);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('Source'))).toBe(true);
+    expect(result.errorDetails.length).toBeGreaterThan(0);
+  });
+
+  it('cycle in real edges → cycle with participating nodeIds', () => {
     const nodes = [makeNode('s', 'source'), makeNode('p1', 'process'), makeNode('p2', 'process'), makeNode('k', 'sink')];
     const edges = [
       makeEdge('e1', 's', 'p1'),
@@ -209,6 +219,10 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('cycle');
+    const cycleDetail = result.errorDetails.find(e => e.category === 'cycle');
+    expect(cycleDetail).toBeDefined();
+    expect(cycleDetail!.nodeIds).toContain('p1');
+    expect(cycleDetail!.nodeIds).toContain('p2');
   });
 
   it('orphaned process node → orphaned_node', () => {
@@ -221,6 +235,7 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('orphaned_node');
+    expect(result.errorDetails.some(e => e.category === 'orphaned_node' && e.nodeIds.includes('p2'))).toBe(true);
   });
 
   it('orphaned node error includes node name, not raw ID', () => {
@@ -302,6 +317,7 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('missing_bom');
+    expect(result.errorDetails.some(e => e.category === 'missing_bom' && e.nodeIds.includes('m'))).toBe(true);
   });
 
   it('merge node with BOM ratio of 0 → missing_bom', () => {
@@ -366,6 +382,7 @@ describe('validateGraph — invalid graphs', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('invalid_ratio_sum');
+    expect(result.errorDetails.some(e => e.category === 'invalid_ratio_sum' && e.nodeIds.includes('s'))).toBe(true);
   });
 
   it('process node with real + scrap edge and no split ratios → invalid_ratio_sum', () => {
@@ -454,6 +471,7 @@ describe('validateGraph — missing outputMaterial on process node', () => {
     const result = validateGraph(nodes, edges);
     expect(result.isValid).toBe(false);
     expect(result.categories).toContain('missing_output_material');
+    expect(result.errorDetails.some(e => e.category === 'missing_output_material' && e.nodeIds.includes('p'))).toBe(true);
   });
 
   it('process node with empty string outputMaterial → missing_output_material', () => {
@@ -495,6 +513,7 @@ describe('validateGraph — mixed outputMaterial at Sink', () => {
     ];
     const result = validateGraph(nodes, edges);
     expect(result.categories).toContain('mixed_sink_inputs');
+    expect(result.errorDetails.some(e => e.category === 'mixed_sink_inputs' && e.nodeIds.includes('k'))).toBe(true);
   });
 
   it('two process nodes with identical materials → no mixed_sink_inputs', () => {

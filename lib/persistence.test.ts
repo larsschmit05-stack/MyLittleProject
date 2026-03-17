@@ -81,9 +81,15 @@ describe('insertModel', () => {
   });
 
   it('throws Not authenticated when user is null', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
 
     await expect(insertModel('My Model', validModel)).rejects.toThrow('Not authenticated');
+  });
+
+  it('throws auth error message when getUser fails', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'Auth session expired' } });
+
+    await expect(insertModel('My Model', validModel)).rejects.toThrow('Auth session expired');
   });
 });
 
@@ -273,8 +279,14 @@ describe('duplicateModel', () => {
   });
 
   it('throws Not authenticated when user is null', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
 
     await expect(duplicateModel('orig-id')).rejects.toThrow('Not authenticated');
+  });
+
+  it('throws auth error message when getUser fails', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'Network error' } });
+
+    await expect(duplicateModel('orig-id')).rejects.toThrow('Network error');
   });
 });
