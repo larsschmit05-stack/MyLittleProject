@@ -40,6 +40,19 @@
   box-sizing: border-box;
 }
 
+@keyframes bottleneck-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1.0); }
+  50%       { transform: translateX(-50%) scale(1.05); }
+}
+
+.bottleneck-badge {
+  animation: bottleneck-pulse 2s ease-in-out infinite;
+}
+
+.bottleneck-badge.paused {
+  animation-play-state: paused;
+}
+
 html,
 body {
   height: 100%;
@@ -50,3 +63,4 @@ body {
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
 }
+

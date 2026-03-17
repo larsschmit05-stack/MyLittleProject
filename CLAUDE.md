@@ -6,92 +6,94 @@
 
 ## 📖 Read These First
 - `README.md` — Product vision
-- `docs/V1.6_PRD.md` — V1.6 feature requirements (Auth, Persistence, Validation)
-- `docs/V1.6_IMPLEMENTATION_PLAN.md` — V1.6 implementation roadmap with code skeletons
+- `docs/V1.7_PRD.md` — V1.7 enhancement requirements (Parameter Panel + Bottleneck Highlighting)
 - `docs/AI_ROLES.md` — Git/collaboration rules
+- `docs/archive/v1.6/` — V1.6 documentation (Auth, Persistence, Validation - completed)
 
 ---
 
 ## 🎯 Current Phase
 
-**Status:** V1.6 implementation phase starting.
+**Status:** V1.7 enhancement phase (build on V1.6 foundation).
 
 **Previous Phases:**
 - **V1.0:** Linear process modeling (source → process → sink)
 - **V1.5:** DAG support (merges, splits, fork-join with BOM ratios)
-- **Archived documentation:** See `docs/archive/v1.5/` for V1.5 implementation details
+- **V1.6:** Auth, Persistence, Validation (✅ complete)
+- **Archived documentation:** See `docs/archive/` for previous phase details
 
 ---
 
-## 🎯 Role & Scope (V1.6)
+## 🎯 Role & Scope (V1.7)
 
-**Claude Opus:** Lead implementation of all 3 features per V1.6_IMPLEMENTATION_PLAN.md
-- Feature 1: Supabase Auth Setup (3 days)
-- Feature 2: Model Persistence with RLS (2 days)
-- Feature 3: Process Validation (3 days)
+**Claude Opus:** Lead implementation of 2 enhancements per V1.7_PRD.md
+- Enhancement 1: Parameter Panel (floating modal + before/after + reset) — 2-3 days
+- Enhancement 2: Bottleneck Highlighting (pulse animation + edge cases) — 1-2 days
 
-**Opus Implementation Principles (NO OVER-ENGINEERING):**
-- ✅ Follow the implementation plan closely (don't invent new architectures)
-- ✅ Use standard patterns (Supabase auth, React hooks, Zustand stores)
+**Opus Implementation Principles (ENHANCE, DON'T OVER-ENGINEER):**
+- ✅ Follow the V1.7_PRD.md closely (enhancements to existing code, not new architectures)
+- ✅ Reuse existing components and patterns (extract, don't rewrite)
 - ✅ Write clean, readable code with proper error handling
-- ✅ Add tests for critical paths (auth, RLS, validation)
+- ✅ Add tests for new edge cases (multiple bottlenecks, invalid scenarios, etc.)
 - ✅ Keep solutions simple and pragmatic
-- ❌ No unnecessary abstractions or layers
-- ❌ No premature optimization or over-generalization
-- ❌ No custom state management if Zustand works
-- ❌ No complex utility libraries for simple tasks
+- ❌ No unnecessary abstractions or rewrites
+- ❌ No premature optimization
+- ❌ No changes to simulation engine or validation logic (V1.6 foundation stays solid)
+- ❌ No complex utility libraries for simple tasks (CSS animations, simple conditional rendering)
 
-**Quality Focus:** Catch edge cases and handle errors properly — not complexity for complexity's sake.
+**Quality Focus:** Polish for production quality without adding unnecessary complexity.
 
-**Claude Haiku:** Polish, testing, and documentation (after Opus)
-- Component styling with Tailwind
-- Test coverage and edge cases
-- Documentation updates
+**Claude Haiku:** Component styling, testing, and documentation (after Opus)
+- Mobile UX polish with Tailwind
+- Test coverage for edge cases (multiple bottlenecks, invalid states)
+- Documentation updates and README changes
 
-**Out of Scope (V1.7+):** Password reset, team sharing, Excel import, PDF export, offline mode, advanced auth
-
----
-
-## 🚀 Build Steps (V1.6)
-
-See `docs/V1.6_IMPLEMENTATION_PLAN.md` for detailed 10+ step checklist per feature:
-
-**Feature 1 (Auth):** Supabase setup → Auth helpers → Context → Pages → Protected routes → Testing
-**Feature 2 (Persistence):** Database schema → CRUD functions → useModels hook → Dashboard → Editor
-**Feature 3 (Validation):** Validation functions → Graph traversal → Rules → Hooks → UI integration
+**Out of Scope (V1.8+):** Scenario branching, historical what-if tracking, sensitivity analysis, PDF export
 
 ---
 
-## ⚠️ Key Risk Areas (V1.6)
+## 🚀 Build Steps (V1.7)
 
-- **RLS Configuration:** Must correctly isolate user data; test cross-user access prevention
-- **Auto-Save Logic:** 30s debounce must not hammer database; implement connection pooling
-- **Validation Performance:** Graph algorithms must complete in < 500ms on 50-node models
-- **Email Verification:** Confirmation email flow must be tested; handle spam filters
+See `docs/V1.7_PRD.md` for complete enhancement requirements:
+
+**Enhancement 1 (Parameter Panel):** Extract floating panel component → Add before/after display → Add reset button → Mobile modal implementation
+**Enhancement 2 (Bottleneck Highlighting):** Add pulse animation CSS → Edge case handling (zero/multiple/invalid) → Hover tooltip → Integration testing
+
+---
+
+## ⚠️ Key Risk Areas (V1.7)
+
+- **Floating Panel Positioning:** Must not obscure important graph content on narrow screens (< 1024px)
+- **Pulse Animation:** Must be subtle enough not to distract; test UX over extended use
+- **Reset Button:** Must provide clear visual feedback; undo must be instant and obvious
+- **Edge Cases:** Multiple bottlenecks, invalid scenarios, empty graphs must display correctly
 
 ---
 
 ## ✅ Definition of Done
 
-V1.6 is complete when:
-- ✅ All 3 features implemented per V1.6_IMPLEMENTATION_PLAN.md
-- ✅ 100% RLS test coverage (cross-user access blocked)
-- ✅ All validation rules tested (7 rules + edge cases)
-- ✅ E2E tests passing (signup → create → validate → save → logout → login → load)
-- ✅ Performance targets met (auth < 2s, save < 1s, validation < 500ms)
-- ✅ No console errors or warnings in browser
-- ✅ All PRD success criteria met
+V1.7 is complete when:
+- ✅ All 2 enhancements implemented per V1.7_PRD.md (Section 5: Success Criteria)
+- ✅ Floating panel extracts and floats correctly on desktop, modal on mobile
+- ✅ Before/after comparison displays with clear formatting (throughput, bottleneck, utilization)
+- ✅ Reset button reverts changes without saving; Save button commits to DB
+- ✅ Pulse animation on bottleneck badges (subtle, stops on hover/focus)
+- ✅ All edge cases handled: zero bottleneck, multiple, invalid, empty graph
+- ✅ Hover tooltip shows detailed metrics
+- ✅ E2E workflow test passing (float panel → adjust → reset → adjust → save → verify in DB)
+- ✅ Mobile bottom-sheet tested on real device
+- ✅ All V1.6 features still working (no regressions)
+- ✅ No console errors or warnings
+- ✅ Performance targets met (panel render < 200ms, animations 60fps)
 
 ---
 
 ## 📁 Files to Create/Modify
 
-**See Section 1, 2, 3 of V1.6_IMPLEMENTATION_PLAN.md for exact file structure:**
-- 15+ new component files
-- 5+ new lib/hooks files
-- 10+ test files
-- 1 database migration
-- 4 RLS policies
+**See Section 4.4 of V1.7_PRD.md for exact file list:**
+- **New:** `components/editor/FloatingParameterPanel.tsx`
+- **Modified:** `components/editor/PropertiesPanel.tsx`, `ProcessNode.tsx`, `styles.ts`, `EditorLayout.tsx` (optional)
+- **Unchanged:** Simulation engine, validation logic, store architecture
 
 ---
 

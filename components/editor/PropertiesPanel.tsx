@@ -13,6 +13,8 @@ import {
   panelDividerStyle,
 } from './styles';
 import ScenarioManager from './ScenarioManager';
+import { classifyBottlenecks } from './nodes/processNodeStatus';
+
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
 
@@ -382,6 +384,12 @@ function SourceForm({ nodeId, data }: { nodeId: string; data: SourceNodeData }) 
   const [label, setLabel] = useState(data.label);
   const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
 
+  // Sync local state when data prop changes (e.g., after resetToSnapshot reverts the store)
+  useEffect(() => {
+    setLabel(data.label);
+    setOutputMaterial(data.outputMaterial ?? '');
+  }, [data]);
+
   function handleLabelChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setLabel(value);
@@ -545,11 +553,11 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
 
 // ─── Results Summary ──────────────────────────────────────────────────────────
 
-function fmt(n: number): string {
+export function fmt(n: number): string {
   return isFinite(n) ? n.toFixed(2) : 'N/A';
 }
 
-function fmtPct(n: number): string {
+export function fmtPct(n: number): string {
   return isFinite(n) ? (n * 100).toFixed(1) + '%' : 'N/A';
 }
 
@@ -581,17 +589,20 @@ function ResultsSummary() {
       derivedResults.bottleneckNodeId === null &&
       Object.keys(derivedResults.nodeResults).length === 0);
 
-  const bottleneckName = derivedResults?.bottleneckNodeId
-    ? (nodes.find((n) => n.id === derivedResults.bottleneckNodeId)?.data as ProcessNodeData)?.name ??
-      '—'
-    : '—';
-
   const selectedNodeResult =
     selectedElement?.kind === 'node' && selectedElement.nodeType === 'process' && derivedResults
       ? derivedResults.nodeResults[selectedElement.id] ?? null
       : null;
 
   const isInvalid = validationResult && !validationResult.isValid;
+
+  // Bottleneck classification for edge case messaging
+  const classification = classifyBottlenecks(nodes, derivedResults?.nodeResults ?? {});
+
+  const bottleneckNames = classification.bottleneckNodeIds.map((nid) => {
+    const node = nodes.find((n) => n.id === nid);
+    return (node?.data as ProcessNodeData)?.name ?? '—';
+  });
 
   return (
     <section>
@@ -600,24 +611,51 @@ function ResultsSummary() {
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           Build a complete model to see results.
         </p>
-      ) : isInvalid ? (
-        <p style={{ fontSize: '13px', color: 'var(--color-warning)' }}>
-          Cannot calculate — {validationResult.errors[0]}
-        </p>
       ) : isEmpty ? (
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           Build a complete model to see results.
         </p>
       ) : (
         <>
+          {isInvalid && (
+            <p style={{ fontSize: '12px', color: 'var(--color-warning)', marginBottom: '8px' }}>
+              Invalid parameters — results may not be realistic.
+            </p>
+          )}
           <div style={resultRowStyle}>
             <span style={resultLabelStyle}>System Throughput</span>
             <span style={resultValueStyle}>{fmt(derivedResults!.systemThroughput)}</span>
           </div>
-          <div style={resultRowStyle}>
-            <span style={resultLabelStyle}>Bottleneck</span>
-            <span style={resultValueStyle}>{bottleneckName}</span>
-          </div>
+
+          {/* Bottleneck row — conditional on classification */}
+          {classification.status === 'balanced' ? (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={{ ...resultValueStyle, color: 'var(--color-healthy)' }}>
+                System is balanced
+              </span>
+            </div>
+          ) : classification.status === 'multiple' ? (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={resultValueStyle}>
+                Multiple: {bottleneckNames.join(', ')}
+              </span>
+            </div>
+          ) : classification.status === 'elevated' ? (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={{ ...resultValueStyle, color: 'var(--color-warning)' }}>
+                No critical bottleneck (high utilization)
+              </span>
+            </div>
+          ) : (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={resultValueStyle}>{bottleneckNames[0] ?? '—'}</span>
+            </div>
+          )}
+
           {selectedNodeResult && (
             <>
               <p
@@ -653,7 +691,7 @@ function ResultsSummary() {
 
 // ─── Selection Content ────────────────────────────────────────────────────────
 
-function SelectionContent() {
+export function SelectionContent() {
   const selectedElement = useFlowStore((s) => s.selectedElement);
   const nodes = useFlowStore((s) => s.nodes);
 
@@ -691,7 +729,16 @@ function SelectionContent() {
 
 // ─── Panel Root ───────────────────────────────────────────────────────────────
 
-export default function PropertiesPanel() {
+interface PropertiesPanelProps {
+  isFloating?: boolean;
+}
+
+export default function PropertiesPanel({ isFloating }: PropertiesPanelProps) {
+  const selectedElement = useFlowStore((s) => s.selectedElement);
+  const isEditableNode =
+    selectedElement?.kind === 'node' &&
+    (selectedElement.nodeType === 'process' || selectedElement.nodeType === 'source');
+
   return (
     <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
       <ScenarioManager />
@@ -700,7 +747,13 @@ export default function PropertiesPanel() {
       <hr style={panelDividerStyle} />
       <ResultsSummary />
       <hr style={panelDividerStyle} />
-      <SelectionContent />
+      {(isFloating || isEditableNode) ? (
+        <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+          Editing in floating panel...
+        </p>
+      ) : (
+        <SelectionContent />
+      )}
     </div>
   );
 }

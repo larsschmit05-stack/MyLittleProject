@@ -1,9 +1,24 @@
+'use client';
+
 import NodePalette from "./NodePalette";
 import CanvasArea from "./CanvasArea";
 import PropertiesPanel from "./PropertiesPanel";
 import EditorHeader from "./EditorHeader";
+import FloatingParameterPanel from "./FloatingParameterPanel";
+import { useFloatingPanel } from "../../hooks/useFloatingPanel";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 export default function EditorLayout() {
+  const {
+    isFloating,
+    snapshot,
+    isDirty,
+    closeFloating,
+    resetToSnapshot,
+    saveAndClose,
+  } = useFloatingPanel();
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+
   return (
     <div
       style={{
@@ -41,6 +56,16 @@ export default function EditorLayout() {
           }}
         >
           <CanvasArea />
+          {isFloating && (
+            <FloatingParameterPanel
+              onClose={closeFloating}
+              onReset={resetToSnapshot}
+              onSave={saveAndClose}
+              isDirty={isDirty}
+              snapshot={snapshot}
+              isDesktop={isDesktop}
+            />
+          )}
         </main>
 
         {/* Right sidebar — Properties & Results */}
@@ -54,7 +79,7 @@ export default function EditorLayout() {
             flexDirection: "column",
           }}
         >
-          <PropertiesPanel />
+          <PropertiesPanel isFloating={isFloating} />
         </aside>
       </div>
     </div>

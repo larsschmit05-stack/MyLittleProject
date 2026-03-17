@@ -3,28 +3,28 @@
 ## Purpose
 Define the default responsibilities of Claude, Codex, and Gemini in this repository.
 
-**Current Project Context:** Operational Process Modeler is complete through V1.5 (DAG support with merges, splits, assemblies). V1.6 implementation phase in progress (Auth, Persistence, Validation) — Lead: Claude Opus.
+**Current Project Context:** Operational Process Modeler is complete through V1.6 (Auth, Persistence, Validation). V1.7 enhancement phase in progress (Parameter Panel + Bottleneck Highlighting) — Lead: Claude Opus.
 
 **Primary Documentation:**
 - `README.md` — Product vision and value proposition
-- `CLAUDE.md` — Claude-specific implementation guidance (V1.6)
-- `docs/V1.6_PRD.md` — V1.6 product requirements
-- `docs/V1.6_IMPLEMENTATION_PLAN.md` — V1.6 implementation details
+- `CLAUDE.md` — Claude-specific implementation guidance (V1.7)
+- `docs/V1.7_PRD.md` — V1.7 product requirements
 - `docs/AI_ROLES.md` — This file (role definitions and workflow)
+- `docs/archive/v1.6/` — V1.6 implementation details (Auth, Persistence, Validation)
 - `docs/archive/v1.5/` — V1.5 implementation history (for reference)
 
 ## AI Roles
 
-### Claude Opus — Lead Builder (V1.6)
-**Current Phase Responsibilities (V1.6):**
-- Implement Supabase Auth Setup (Feature 1, 3 days)
-- Implement Model Persistence with RLS (Feature 2, 2 days)
-- Implement Process Model Validation (Feature 3, 3 days)
-- Write production code per V1.6_IMPLEMENTATION_PLAN.md
-- Catch edge cases and ensure robust error handling
-- Keep implementations pragmatic (no over-engineering)
+### Claude Opus — Lead Builder (V1.7)
+**Current Phase Responsibilities (V1.7):**
+- Implement Parameter Panel enhancement (floating modal + before/after + reset, 2-3 days)
+- Implement Bottleneck Highlighting enhancement (pulse animation + edge cases, 1-2 days)
+- Write production code per V1.7_PRD.md (Section 9: Implementation Notes)
+- Extract components from V1.6 codebase; don't rewrite
+- Catch edge cases (multiple bottlenecks, invalid scenarios, empty graphs)
+- Ensure no regressions to V1.6 features (simulation, validation, persistence)
 
-**Principles:** Follow the plan, use standard patterns, write clean code. Superior quality without unnecessary complexity.
+**Principles:** Enhance existing code pragmatically. Reuse patterns from V1.6. Polish for production without over-engineering.
 
 **General Responsibilities:**
 - Leading complex implementation phases
@@ -34,10 +34,10 @@ Define the default responsibilities of Claude, Codex, and Gemini in this reposit
 
 ---
 
-### Claude Sonnet — Lead Builder (Post-V1.6)
-**Current Phase Responsibilities (V1.6):**
-- Standby for Feature 1-3; escalate to if Opus needs support
-- Available for parallel work on other components if needed
+### Claude Sonnet — Lead Builder (Post-V1.7)
+**Current Phase Responsibilities (V1.7):**
+- Support Opus if parallel work needed or if enhancements become larger than expected
+- Available for rapid iterations if UX polish requires additional rounds
 
 **General Responsibilities:**
 - Implementing features in production
@@ -50,11 +50,12 @@ Define the default responsibilities of Claude, Codex, and Gemini in this reposit
 Claude Sonnet is the default agent for important engineering work during implementation phases.
 
 ### Claude Haiku — Quick Executor
-**Current Phase Responsibilities (V1.6):**
-- Component styling with Tailwind (LoginForm, SignupForm, ModelsList, etc.)
-- Writing and updating test cases per V1.6_IMPLEMENTATION_PLAN.md
+**Current Phase Responsibilities (V1.7):**
+- Component styling with Tailwind (floating panel, mobile UX polish)
+- Writing and updating test cases per V1.7_PRD.md (Section 5: Acceptance Tests)
 - Documentation updates and README changes
-- Small UI adjustments and bug fixes
+- Mobile UX refinement and touch-friendly adjustments
+- E2E test implementation
 
 **General Responsibilities:**
 - Small bug fixes
@@ -67,13 +68,14 @@ Claude Sonnet is the default agent for important engineering work during impleme
 Claude Haiku should only be used for clearly scoped, low-risk tasks. Do NOT use Haiku for core logic, complex calculations, or critical system components.
 
 ### Codex — Engineering Reviewer and Git Operator
-**Current Phase Responsibilities (V1.6):**
-- Review Feature 1 (Auth) implementation against V1.6_PRD.md
-- Review Feature 2 (Persistence) implementation, verify RLS test coverage
-- Review Feature 3 (Validation) implementation, verify all 7 rules tested
-- Check performance targets met (auth < 2s, save < 1s, validation < 500ms)
-- Verify test coverage and edge cases handled
-- Commit and push changes to dev branch with descriptive messages
+**Current Phase Responsibilities (V1.7):**
+- Review Enhancement 1 (Parameter Panel) implementation against V1.7_PRD.md (Section 2)
+- Review Enhancement 2 (Bottleneck Highlighting) implementation against V1.7_PRD.md (Section 3)
+- Verify regression tests pass: all V1.6 features still working
+- Check performance targets met (panel render < 200ms, animations 60fps)
+- Verify edge case handling: multiple bottlenecks, invalid scenarios, empty graphs
+- Verify test coverage (mobile, desktop, edge cases)
+- Commit and push changes to dev branch with descriptive messages (feat: / fix: / test:)
 
 **General Responsibilities:**
 - Reviewing plans and implementations critically
@@ -101,15 +103,15 @@ Gemini is not the primary implementation agent. Only use for ideation and planni
 
 ## Default Workflow
 
-### For Implementation Phase (Current - V1.6):
-1. **Assign work to Claude Opus** — Implement Features 1-3 per V1.6_IMPLEMENTATION_PLAN.md (pragmatic, no over-engineering).
-2. **Review with Codex** — Validate against V1.6_PRD.md, check test coverage, verify RLS and performance.
-3. **Polish with Claude Haiku** — UI styling, test coverage, documentation updates.
+### For Implementation Phase (Current - V1.7):
+1. **Assign work to Claude Opus** — Implement 2 enhancements per V1.7_PRD.md (extract components, add features, test edge cases).
+2. **Review with Codex** — Validate against V1.7_PRD.md, verify regressions, check performance and edge cases.
+3. **Polish with Claude Haiku** — Mobile UX refinement, test coverage, documentation updates, E2E tests.
 4. **Commit with Codex** — Clean, descriptive commit messages; push to dev branch.
 
-### For Planning Phase (V1.7+):
-1. **Brainstorm with Gemini** — Explore features, UX patterns, and prioritization.
-2. **Draft requirements** — Create V1.7_PRD.md and V1.7_IMPLEMENTATION_PLAN.md.
+### For Planning Phase (V1.8+):
+1. **Brainstorm with Gemini** — Explore features, UX patterns, and prioritization (scenario branching, sensitivity analysis, export).
+2. **Draft requirements** — Create V1.8_PRD.md.
 3. **Review and approve** — Get stakeholder sign-off before implementation begins.
 
 ### For General Feature Work:

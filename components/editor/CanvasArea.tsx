@@ -110,18 +110,34 @@ function FlowCanvas() {
             onClick={hasErrors ? () => setShowValidationModal(true) : undefined}
             onKeyDown={hasErrors ? (e) => { if (e.key === 'Enter') setShowValidationModal(true); } : undefined}
             style={{
-              padding: '6px 10px',
-              borderRadius: '6px',
-              fontSize: '12px',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: hasErrors ? 600 : 500,
               background: graphStatus?.isValid ? 'var(--color-healthy)' : 'var(--color-bg-primary)',
-              border: '1px solid',
+              borderWidth: '2px',
+              borderStyle: 'solid',
               borderColor: graphStatus?.isValid ? 'var(--color-healthy)' : hasErrors ? 'var(--color-bottleneck)' : 'var(--color-border)',
               color: graphStatus?.isValid ? '#fff' : hasErrors ? 'var(--color-bottleneck)' : 'var(--color-text-secondary)',
               maxWidth: '360px',
               cursor: hasErrors ? 'pointer' : 'default',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.2s ease',
+              boxShadow: hasErrors ? '0 2px 8px rgba(239, 68, 68, 0.15)' : 'none',
+              transform: hasErrors ? 'scale(1)' : 'scale(1)',
             }}
+            onMouseEnter={(e) => hasErrors && (e.currentTarget.style.transform = 'scale(1.02)')}
+            onMouseLeave={(e) => hasErrors && (e.currentTarget.style.transform = 'scale(1)')}
           >
-            {badgeText}
+            <div>{badgeText}</div>
+            {hasErrors && (
+              <div style={{ fontSize: '10px', fontWeight: 500, color: 'currentColor', opacity: 0.85 }}>
+                click to see details
+              </div>
+            )}
           </div>
         </Panel>
       </ReactFlow>
