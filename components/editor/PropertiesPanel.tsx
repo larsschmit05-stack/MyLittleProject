@@ -14,6 +14,7 @@ import {
 } from './styles';
 import ScenarioManager from './ScenarioManager';
 
+
 // ─── Global Demand ────────────────────────────────────────────────────────────
 
 function GlobalDemandSection() {
@@ -382,6 +383,12 @@ function SourceForm({ nodeId, data }: { nodeId: string; data: SourceNodeData }) 
   const [label, setLabel] = useState(data.label);
   const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
 
+  // Sync local state when data prop changes (e.g., after resetToSnapshot reverts the store)
+  useEffect(() => {
+    setLabel(data.label);
+    setOutputMaterial(data.outputMaterial ?? '');
+  }, [data]);
+
   function handleLabelChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setLabel(value);
@@ -545,11 +552,11 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
 
 // ─── Results Summary ──────────────────────────────────────────────────────────
 
-function fmt(n: number): string {
+export function fmt(n: number): string {
   return isFinite(n) ? n.toFixed(2) : 'N/A';
 }
 
-function fmtPct(n: number): string {
+export function fmtPct(n: number): string {
   return isFinite(n) ? (n * 100).toFixed(1) + '%' : 'N/A';
 }
 
@@ -653,7 +660,7 @@ function ResultsSummary() {
 
 // ─── Selection Content ────────────────────────────────────────────────────────
 
-function SelectionContent() {
+export function SelectionContent() {
   const selectedElement = useFlowStore((s) => s.selectedElement);
   const nodes = useFlowStore((s) => s.nodes);
 
@@ -691,7 +698,16 @@ function SelectionContent() {
 
 // ─── Panel Root ───────────────────────────────────────────────────────────────
 
-export default function PropertiesPanel() {
+interface PropertiesPanelProps {
+  isFloating?: boolean;
+}
+
+export default function PropertiesPanel({ isFloating }: PropertiesPanelProps) {
+  const selectedElement = useFlowStore((s) => s.selectedElement);
+  const isEditableNode =
+    selectedElement?.kind === 'node' &&
+    (selectedElement.nodeType === 'process' || selectedElement.nodeType === 'source');
+
   return (
     <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
       <ScenarioManager />
@@ -700,7 +716,13 @@ export default function PropertiesPanel() {
       <hr style={panelDividerStyle} />
       <ResultsSummary />
       <hr style={panelDividerStyle} />
-      <SelectionContent />
+      {(isFloating || isEditableNode) ? (
+        <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+          Editing in floating panel...
+        </p>
+      ) : (
+        <SelectionContent />
+      )}
     </div>
   );
 }
