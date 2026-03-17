@@ -18,6 +18,9 @@ function fmtUtil(utilization: number): string {
 export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNodeData>) {
   const nodeResult = useFlowStore((s) => s.derivedResults?.nodeResults[id] ?? null);
   const isBottleneck = useFlowStore((s) => s.derivedResults?.bottleneckNodeId === id);
+  const hasValidationError = useFlowStore((s) =>
+    s.validationResult?.errorDetails?.some(e => e.nodeIds.includes(id)) ?? false
+  );
   const statusColor = nodeResult
     ? getProcessNodeStatusColor(nodeResult.utilization)
     : 'var(--color-border)';
@@ -26,9 +29,11 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
   const border =
     selected
       ? '2px solid var(--color-action)'
-      : nodeResult
-        ? `2px solid ${statusColor}`
-        : '1px solid var(--color-border)';
+      : hasValidationError
+        ? '2px solid var(--color-bottleneck)'
+        : nodeResult
+          ? `2px solid ${statusColor}`
+          : '1px solid var(--color-border)';
 
   const boxShadow = isBottleneck
     ? '0 0 0 3px color-mix(in srgb, var(--color-action) 20%, transparent)'
