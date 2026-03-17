@@ -77,16 +77,16 @@ describe('useAuthStore', () => {
     vi.mocked(authLib.login).mockResolvedValue({
       user: null,
       session: null,
-      error: 'Invalid login credentials',
+      error: 'Invalid email or password',
     });
 
     const result = await useAuthStore.getState().login('test@example.com', 'wrong');
 
-    expect(result.error).toBe('Invalid login credentials');
+    expect(result.error).toBe('Invalid email or password');
     const state = useAuthStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(state.error).toBe('Invalid login credentials');
+    expect(state.error).toBe('Invalid email or password');
   });
 
   it('logout clears user and isAuthenticated', async () => {

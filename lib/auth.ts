@@ -2,11 +2,12 @@ import { getSupabaseClient } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
 export async function signup(email: string, password: string) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const { data, error } = await getSupabaseClient().auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${window.location.origin}/login`,
+      emailRedirectTo: `${origin}/login`,
     },
   });
   if (error) return { user: null, error: error.message };
@@ -18,7 +19,7 @@ export async function login(email: string, password: string) {
     email,
     password,
   });
-  if (error) return { session: null, user: null, error: error.message };
+  if (error) return { session: null, user: null, error: 'Invalid email or password' };
   return { session: data.session, user: data.user, error: null };
 }
 

@@ -1,5 +1,6 @@
 'use client';
 import { useState, type FormEvent, type CSSProperties } from 'react';
+import Link from 'next/link';
 import useAuthStore from '@/store/useAuthStore';
 
 const inputStyle: CSSProperties = {
@@ -83,9 +84,9 @@ export default function SignupForm() {
         <p style={{ fontSize: '14px', color: 'var(--color-healthy)', fontWeight: 500, marginBottom: '16px' }}>
           Check your email to confirm your account.
         </p>
-        <a href="/login" style={{ fontSize: '13px', color: 'var(--color-action)', textDecoration: 'none', fontWeight: 500 }}>
+        <Link href="/login" style={{ fontSize: '13px', color: 'var(--color-action)', textDecoration: 'none', fontWeight: 500 }}>
           Back to Sign In
-        </a>
+        </Link>
       </div>
     );
   }
@@ -140,9 +141,9 @@ export default function SignupForm() {
 
       <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', textAlign: 'center', marginTop: '16px' }}>
         Already have an account?{' '}
-        <a href="/login" style={{ color: 'var(--color-action)', textDecoration: 'none', fontWeight: 500 }}>
+        <Link href="/login" style={{ color: 'var(--color-action)', textDecoration: 'none', fontWeight: 500 }}>
           Sign in
-        </a>
+        </Link>
       </p>
     </form>
   );

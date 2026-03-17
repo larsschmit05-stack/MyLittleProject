@@ -7,6 +7,7 @@ import useFlowStore from '../../store/useFlowStore';
 import useAuthStore from '../../store/useAuthStore';
 
 type ModelListItem = Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>;
+type SortKey = 'name' | 'created_at' | 'updated_at';
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
@@ -28,14 +29,36 @@ const secondaryBtn: React.CSSProperties = {
   background: 'transparent',
   border: '1px solid var(--color-border)',
   color: 'var(--color-text-primary)',
-  padding: '8px 12px',
-  fontSize: '13px',
+  padding: '6px 10px',
+  fontSize: '12px',
 };
 
 const dangerBtn: React.CSSProperties = {
   ...secondaryBtn,
   color: 'var(--color-bottleneck)',
   border: '1px solid var(--color-bottleneck)',
+};
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left',
+  fontSize: '11px',
+  fontWeight: 600,
+  color: 'var(--color-text-label)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  padding: '8px 12px',
+  borderBottom: '1px solid var(--color-border)',
+  cursor: 'pointer',
+  userSelect: 'none',
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '10px 12px',
+  fontSize: '13px',
+  color: 'var(--color-text-primary)',
+  borderBottom: '1px solid var(--color-border)',
+  verticalAlign: 'middle',
 };
 
 export default function DashboardPage() {
@@ -53,6 +76,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('updated_at');
+  const [sortAsc, setSortAsc] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -115,6 +140,27 @@ export default function DashboardPage() {
     }
   }
 
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(key === 'name');
+    }
+  }
+
+  const sortedModels = [...models].sort((a, b) => {
+    const aVal = a[sortKey];
+    const bVal = b[sortKey];
+    const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    return sortAsc ? cmp : -cmp;
+  });
+
+  function sortIndicator(key: SortKey) {
+    if (sortKey !== key) return '';
+    return sortAsc ? ' \u25B2' : ' \u25BC';
+  }
+
   return (
     <main
       style={{
@@ -123,7 +169,7 @@ export default function DashboardPage() {
         padding: '40px',
       }}
     >
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
@@ -156,84 +202,100 @@ export default function DashboardPage() {
           </p>
         )}
 
-        {/* Model list */}
+        {/* Model table */}
         {!loading && !error && models.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {models.map((model) => (
-              <div
-                key={model.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  background: 'var(--color-bg-primary)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '8px',
-                  padding: '12px 16px',
-                }}
-              >
-                {/* Name — click to rename */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {renamingId === model.id ? (
-                    <input
-                      autoFocus
-                      type="text"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={() => commitRename(model.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitRename(model.id);
-                        if (e.key === 'Escape') setRenamingId(null);
-                      }}
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: 'var(--color-text-primary)',
-                        border: '1px solid var(--color-action)',
-                        borderRadius: '8px',
-                        padding: '4px 8px',
-                        outline: 'none',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  ) : (
-                    <span
-                      onClick={() => startRename(model)}
-                      title="Click to rename"
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        color: 'var(--color-text-primary)',
-                        cursor: 'text',
-                        display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {model.name}
-                    </span>
-                  )}
-                  <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                    Updated {fmtDate(model.updated_at)}
-                  </span>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                  <button onClick={() => handleOpen(model.id)} style={secondaryBtn}>
-                    Open
-                  </button>
-                  <button onClick={() => handleDuplicate(model.id)} style={secondaryBtn}>
-                    Duplicate
-                  </button>
-                  <button onClick={() => handleDelete(model.id, model.name)} style={dangerBtn}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div style={{
+            background: 'var(--color-bg-primary)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle} onClick={() => handleSort('name')}>
+                    Name{sortIndicator('name')}
+                  </th>
+                  <th style={{ ...thStyle, width: '120px' }} onClick={() => handleSort('created_at')}>
+                    Created{sortIndicator('created_at')}
+                  </th>
+                  <th style={{ ...thStyle, width: '120px' }} onClick={() => handleSort('updated_at')}>
+                    Updated{sortIndicator('updated_at')}
+                  </th>
+                  <th style={{ ...thStyle, width: '200px', cursor: 'default' }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedModels.map((model) => (
+                  <tr key={model.id}>
+                    {/* Name — click to open, double-click to rename */}
+                    <td style={tdStyle}>
+                      {renamingId === model.id ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => commitRename(model.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitRename(model.id);
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          style={{
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            color: 'var(--color-text-primary)',
+                            border: '1px solid var(--color-action)',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            outline: 'none',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      ) : (
+                        <span
+                          onClick={() => handleOpen(model.id)}
+                          title="Click to open"
+                          style={{
+                            fontWeight: 600,
+                            color: 'var(--color-action)',
+                            cursor: 'pointer',
+                            display: 'block',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {model.name}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                      {fmtDate(model.created_at)}
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                      {fmtDate(model.updated_at)}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => startRename(model)} style={secondaryBtn}>
+                          Rename
+                        </button>
+                        <button onClick={() => handleDuplicate(model.id)} style={secondaryBtn}>
+                          Duplicate
+                        </button>
+                        <button onClick={() => handleDelete(model.id, model.name)} style={dangerBtn}>
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

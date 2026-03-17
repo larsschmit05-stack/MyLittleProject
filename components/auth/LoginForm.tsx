@@ -1,6 +1,7 @@
 'use client';
 import { useState, type FormEvent, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import useAuthStore from '@/store/useAuthStore';
 
 const inputStyle: CSSProperties = {
@@ -93,9 +94,9 @@ export default function LoginForm() {
 
       <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', textAlign: 'center', marginTop: '16px' }}>
         Don&apos;t have an account?{' '}
-        <a href="/signup" style={{ color: 'var(--color-action)', textDecoration: 'none', fontWeight: 500 }}>
+        <Link href="/signup" style={{ color: 'var(--color-action)', textDecoration: 'none', fontWeight: 500 }}>
           Create account
-        </a>
+        </Link>
       </p>
     </form>
   );
