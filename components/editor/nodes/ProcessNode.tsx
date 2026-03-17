@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import type { ProcessNodeData } from '../../../types/flow';
 import { getNodeStyle, nodeLabelStyle, nodeValueStyle } from '../styles';
@@ -7,6 +8,7 @@ import useFlowStore from '../../../store/useFlowStore';
 import {
   getProcessNodeStatusColor,
   shouldShowProcessNodeWarning,
+  classifyBottlenecks,
 } from './processNodeStatus';
 import { formatNumberShort } from '../../../utils/format';
 
@@ -16,15 +18,27 @@ function fmtUtil(utilization: number): string {
 }
 
 export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNodeData>) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [nodeHovered, setNodeHovered] = useState(false);
+
   const nodeResult = useFlowStore((s) => s.derivedResults?.nodeResults[id] ?? null);
-  const isBottleneck = useFlowStore((s) => s.derivedResults?.bottleneckNodeId === id);
+  const nodes = useFlowStore((s) => s.nodes);
+  const allNodeResults = useFlowStore((s) => s.derivedResults?.nodeResults ?? {});
   const hasValidationError = useFlowStore((s) =>
     s.validationResult?.errorDetails?.some(e => e.nodeIds.includes(id)) ?? false
   );
+
   const statusColor = nodeResult
     ? getProcessNodeStatusColor(nodeResult.utilization)
     : 'var(--color-border)';
   const showWarning = nodeResult ? shouldShowProcessNodeWarning(nodeResult.utilization) : false;
+
+  // Bottleneck classification (single source of truth)
+  const classification = classifyBottlenecks(nodes, allNodeResults);
+  const showBottleneckBadge = classification.bottleneckNodeIds.includes(id);
+  const bottleneckIndex = showBottleneckBadge
+    ? classification.bottleneckNodeIds.indexOf(id) + 1
+    : 0;
 
   const border =
     selected
@@ -35,12 +49,16 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
           ? `2px solid ${statusColor}`
           : '1px solid var(--color-border)';
 
-  const boxShadow = isBottleneck
-    ? '0 0 0 3px color-mix(in srgb, var(--color-action) 20%, transparent)'
+  const boxShadow = showBottleneckBadge
+    ? '0 0 0 3px color-mix(in srgb, var(--color-bottleneck) 20%, transparent)'
     : undefined;
 
   return (
-    <div style={{ ...getNodeStyle(selected), border, boxShadow, position: 'relative' }}>
+    <div
+      style={{ ...getNodeStyle(selected), border, boxShadow, position: 'relative' }}
+      onMouseEnter={() => setNodeHovered(true)}
+      onMouseLeave={() => setNodeHovered(false)}
+    >
       {showWarning && (
         <div
           aria-label="High utilization warning"
@@ -78,7 +96,7 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
           {data.outputMaterial}
         </div>
       )}
-      
+
       {nodeResult && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
@@ -89,14 +107,59 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
             <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>CAP</span>
             <span style={nodeValueStyle}>{formatNumberShort(nodeResult.effectiveCapacity)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '4px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '16px',
+              borderTop: '1px solid var(--color-border)',
+              paddingTop: '4px',
+              position: 'relative',
+              cursor: 'default',
+            }}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            onFocus={() => setShowTooltip(true)}
+            onBlur={() => setShowTooltip(false)}
+            tabIndex={0}
+            role="group"
+            aria-label={`Utilization: ${fmtUtil(nodeResult.utilization)}`}
+          >
             <span style={{ fontSize: '10px', color: 'var(--color-text-label)' }}>UTIL</span>
             <span style={{ ...nodeValueStyle, color: statusColor }}>{fmtUtil(nodeResult.utilization)}</span>
+            {showTooltip && (
+              <div
+                role="tooltip"
+                style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  marginBottom: '6px',
+                  background: 'var(--color-text-primary)',
+                  color: 'var(--color-bg-primary)',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  lineHeight: 1.5,
+                  whiteSpace: 'nowrap',
+                  zIndex: 10,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <div>Utilization: {fmtUtil(nodeResult.utilization)}</div>
+                <div>Required: {formatNumberShort(nodeResult.requiredThroughput)} units/hr</div>
+                <div>Capacity: {formatNumberShort(nodeResult.effectiveCapacity)} units/hr</div>
+                <div>Resources: {data.numberOfResources}</div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {isBottleneck && (
+      {/* Invalid badge — highest precedence, shown regardless of nodeResult */}
+      {hasValidationError && (
         <div style={{
           position: 'absolute',
           top: '-20px',
@@ -104,12 +167,43 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
           transform: 'translateX(-50%)',
           fontSize: '9px',
           fontWeight: 700,
-          color: 'var(--color-bottleneck)',
+          color: 'var(--color-warning)',
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          background: 'var(--color-bg-primary)',
+          padding: '1px 4px',
+          borderRadius: '2px',
         }}>
-          Bottleneck
+          INVALID
+        </div>
+      )}
+
+      {/* Bottleneck badge with pulse — only if not invalid */}
+      {showBottleneckBadge && !hasValidationError && (
+        <div
+          className={`bottleneck-badge${nodeHovered || selected ? ' paused' : ''}`}
+          tabIndex={0}
+          aria-label={`Bottleneck ${bottleneckIndex} of ${classification.totalBottlenecks}`}
+          style={{
+            position: 'absolute',
+            top: '-20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: '9px',
+            fontWeight: 700,
+            color: 'var(--color-bottleneck)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            whiteSpace: 'nowrap',
+            background: 'var(--color-bg-primary)',
+            padding: '1px 4px',
+            borderRadius: '2px',
+          }}
+        >
+          Bottleneck{classification.totalBottlenecks > 1
+            ? ` (${bottleneckIndex}/${classification.totalBottlenecks})`
+            : ''}
         </div>
       )}
       <Handle type="target" position={Position.Left} />

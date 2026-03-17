@@ -13,6 +13,7 @@ import {
   panelDividerStyle,
 } from './styles';
 import ScenarioManager from './ScenarioManager';
+import { classifyBottlenecks } from './nodes/processNodeStatus';
 
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
@@ -588,17 +589,20 @@ function ResultsSummary() {
       derivedResults.bottleneckNodeId === null &&
       Object.keys(derivedResults.nodeResults).length === 0);
 
-  const bottleneckName = derivedResults?.bottleneckNodeId
-    ? (nodes.find((n) => n.id === derivedResults.bottleneckNodeId)?.data as ProcessNodeData)?.name ??
-      '—'
-    : '—';
-
   const selectedNodeResult =
     selectedElement?.kind === 'node' && selectedElement.nodeType === 'process' && derivedResults
       ? derivedResults.nodeResults[selectedElement.id] ?? null
       : null;
 
   const isInvalid = validationResult && !validationResult.isValid;
+
+  // Bottleneck classification for edge case messaging
+  const classification = classifyBottlenecks(nodes, derivedResults?.nodeResults ?? {});
+
+  const bottleneckNames = classification.bottleneckNodeIds.map((nid) => {
+    const node = nodes.find((n) => n.id === nid);
+    return (node?.data as ProcessNodeData)?.name ?? '—';
+  });
 
   return (
     <section>
@@ -607,24 +611,51 @@ function ResultsSummary() {
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           Build a complete model to see results.
         </p>
-      ) : isInvalid ? (
-        <p style={{ fontSize: '13px', color: 'var(--color-warning)' }}>
-          Cannot calculate — {validationResult.errors[0]}
-        </p>
       ) : isEmpty ? (
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           Build a complete model to see results.
         </p>
       ) : (
         <>
+          {isInvalid && (
+            <p style={{ fontSize: '12px', color: 'var(--color-warning)', marginBottom: '8px' }}>
+              Invalid parameters — results may not be realistic.
+            </p>
+          )}
           <div style={resultRowStyle}>
             <span style={resultLabelStyle}>System Throughput</span>
             <span style={resultValueStyle}>{fmt(derivedResults!.systemThroughput)}</span>
           </div>
-          <div style={resultRowStyle}>
-            <span style={resultLabelStyle}>Bottleneck</span>
-            <span style={resultValueStyle}>{bottleneckName}</span>
-          </div>
+
+          {/* Bottleneck row — conditional on classification */}
+          {classification.status === 'balanced' ? (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={{ ...resultValueStyle, color: 'var(--color-healthy)' }}>
+                System is balanced
+              </span>
+            </div>
+          ) : classification.status === 'multiple' ? (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={resultValueStyle}>
+                Multiple: {bottleneckNames.join(', ')}
+              </span>
+            </div>
+          ) : classification.status === 'elevated' ? (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={{ ...resultValueStyle, color: 'var(--color-warning)' }}>
+                No critical bottleneck (high utilization)
+              </span>
+            </div>
+          ) : (
+            <div style={resultRowStyle}>
+              <span style={resultLabelStyle}>Bottleneck</span>
+              <span style={resultValueStyle}>{bottleneckNames[0] ?? '—'}</span>
+            </div>
+          )}
+
           {selectedNodeResult && (
             <>
               <p
