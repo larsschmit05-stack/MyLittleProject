@@ -13,6 +13,7 @@ export function isSerializedModel(value: unknown): value is SerializedModel {
 
 export interface SavedModelRow {
   id: string;
+  user_id: string;
   name: string;
   data: SerializedModel;
   created_at: string;
@@ -23,9 +24,13 @@ export async function insertModel(
   name: string,
   model: SerializedModel
 ): Promise<string> {
-  const { data, error } = await getSupabaseClient()
+  const client = getSupabaseClient();
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await client
     .from('models')
-    .insert({ name, data: model })
+    .insert({ name, data: model, user_id: user.id })
     .select('id')
     .single();
   if (error) throw new Error(error.message);
@@ -82,7 +87,11 @@ export async function deleteModel(id: string): Promise<void> {
 }
 
 export async function duplicateModel(id: string): Promise<string> {
-  const { data: original, error: fetchError } = await getSupabaseClient()
+  const client = getSupabaseClient();
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data: original, error: fetchError } = await client
     .from('models')
     .select('name, data')
     .eq('id', id)
@@ -90,9 +99,9 @@ export async function duplicateModel(id: string): Promise<string> {
   if (fetchError) throw new Error(fetchError.message);
 
   const newName = `${original.name} (Copy)`;
-  const { data: created, error: insertError } = await getSupabaseClient()
+  const { data: created, error: insertError } = await client
     .from('models')
-    .insert({ name: newName, data: original.data })
+    .insert({ name: newName, data: original.data, user_id: user.id })
     .select('id')
     .single();
   if (insertError) throw new Error(insertError.message);

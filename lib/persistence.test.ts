@@ -4,8 +4,9 @@ import type { SerializedModel } from '../types/flow';
 
 // Mock the supabase module
 const mockFrom = vi.fn();
+const mockGetUser = vi.fn();
 vi.mock('./supabase', () => ({
-  getSupabaseClient: () => ({ from: mockFrom }),
+  getSupabaseClient: () => ({ from: mockFrom, auth: { getUser: mockGetUser } }),
 }));
 
 const validModel: SerializedModel = {
@@ -55,7 +56,8 @@ describe('isSerializedModel', () => {
 describe('insertModel', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('calls insert with name and data, returns the id', async () => {
+  it('calls insert with name, data, and user_id, returns the id', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
     const mockSingle = vi.fn().mockResolvedValue({ data: { id: 'abc-123' }, error: null });
     const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
     const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
@@ -64,17 +66,24 @@ describe('insertModel', () => {
     const id = await insertModel('My Model', validModel);
 
     expect(mockFrom).toHaveBeenCalledWith('models');
-    expect(mockInsert).toHaveBeenCalledWith({ name: 'My Model', data: validModel });
+    expect(mockInsert).toHaveBeenCalledWith({ name: 'My Model', data: validModel, user_id: 'user-1' });
     expect(id).toBe('abc-123');
   });
 
   it('throws when supabase returns an error', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
     const mockSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'insert failed' } });
     const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
     const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
     mockFrom.mockReturnValue({ insert: mockInsert });
 
     await expect(insertModel('My Model', validModel)).rejects.toThrow('insert failed');
+  });
+
+  it('throws Not authenticated when user is null', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+
+    await expect(insertModel('My Model', validModel)).rejects.toThrow('Not authenticated');
   });
 });
 
@@ -230,10 +239,11 @@ describe('deleteModel', () => {
 describe('duplicateModel', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('fetches original and inserts a copy with new name', async () => {
+  it('fetches original and inserts a copy with new name and user_id', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
     const original = { name: 'Original', data: validModel };
     const mockFetchSingle = vi.fn().mockResolvedValue({ data: original, error: null });
-    
+
     const mockInsertSingle = vi.fn().mockResolvedValue({ data: { id: 'copy-id' }, error: null });
     const mockInsertSelect = vi.fn().mockReturnValue({ single: mockInsertSingle });
     const mockInsert = vi.fn().mockReturnValue({ select: mockInsertSelect });
@@ -258,7 +268,13 @@ describe('duplicateModel', () => {
 
     const newId = await duplicateModel('orig-id');
 
-    expect(mockInsert).toHaveBeenCalledWith({ name: 'Original (Copy)', data: validModel });
+    expect(mockInsert).toHaveBeenCalledWith({ name: 'Original (Copy)', data: validModel, user_id: 'user-1' });
     expect(newId).toBe('copy-id');
+  });
+
+  it('throws Not authenticated when user is null', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+
+    await expect(duplicateModel('orig-id')).rejects.toThrow('Not authenticated');
   });
 });
