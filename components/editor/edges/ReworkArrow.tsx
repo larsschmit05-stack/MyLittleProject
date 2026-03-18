@@ -21,20 +21,16 @@ export default function ReworkArrow({
 }: ReworkArrowProps) {
   const [hovered, setHovered] = useState(false);
 
-  // Orthogonal path: up → left → down
-  // Offset distances for the path routing
+  // Orthogonal path: up → horizontal to target center → down
+  // Shortest path that descends at the target node center (where rework handle is)
   const verticalOffset = Math.max(60, Math.abs(sourceY - targetY) / 2 + 20);
-  const horizontalOffset = Math.min(-50, targetX - sourceX - 100);
-
-  // Path points
   const upY = sourceY - verticalOffset;
-  const leftX = targetX + horizontalOffset;
 
-  // Orthogonal path: vertical up → horizontal left → vertical down
-  const path = `M ${sourceX} ${sourceY} L ${sourceX} ${upY} L ${leftX} ${upY} L ${leftX} ${targetY} L ${targetX} ${targetY}`;
+  // Orthogonal path: vertical up → horizontal to target X → vertical down
+  const path = `M ${sourceX} ${sourceY} L ${sourceX} ${upY} L ${targetX} ${upY} L ${targetX} ${targetY}`;
 
-  // Label position directly above the horizontal segment
-  const labelX = (sourceX + leftX) / 2;
+  // Label position at the midpoint of the horizontal segment
+  const labelX = (sourceX + targetX) / 2;
   const labelY = upY - 12;
 
   return (
@@ -63,12 +59,12 @@ export default function ReworkArrow({
         opacity={0.85}
         pointerEvents="none"
       />
-      {/* Arrowhead */}
+      {/* Arrowhead pointing upward into the node — positioned so tip just touches */}
       <polygon
         points={`0,-4 8,0 0,4`}
         fill="#F97316"
         opacity={0.85}
-        transform={`translate(${targetX},${targetY}) rotate(270)`}
+        transform={`translate(${targetX},${targetY - 8}) rotate(90)`}
         pointerEvents="none"
       />
       {/* Label */}
