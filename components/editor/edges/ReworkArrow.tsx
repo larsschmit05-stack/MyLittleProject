@@ -21,28 +21,21 @@ export default function ReworkArrow({
 }: ReworkArrowProps) {
   const [hovered, setHovered] = useState(false);
 
-  // Quadratic bezier going upward (backward flow)
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  // Control point goes above the midpoint for a nice arc
-  const midX = (sourceX + targetX) / 2;
-  const midY = (sourceY + targetY) / 2;
-  const offset = Math.max(40, dist * 0.3);
-  const cpX = midX;
-  const cpY = midY - offset;
+  // Orthogonal path: up → left → down
+  // Offset distances for the path routing
+  const verticalOffset = Math.max(60, Math.abs(sourceY - targetY) / 2 + 20);
+  const horizontalOffset = Math.min(-50, targetX - sourceX - 100);
 
-  const path = `M ${sourceX} ${sourceY} Q ${cpX} ${cpY} ${targetX} ${targetY}`;
+  // Path points
+  const upY = sourceY - verticalOffset;
+  const leftX = targetX + horizontalOffset;
 
-  // Label position at the control point area
-  const labelX = cpX;
-  const labelY = cpY - 4;
+  // Orthogonal path: vertical up → horizontal left → vertical down
+  const path = `M ${sourceX} ${sourceY} L ${sourceX} ${upY} L ${leftX} ${upY} L ${leftX} ${targetY} L ${targetX} ${targetY}`;
 
-  // Arrowhead at target
-  const t = 0.95;
-  const ax = (1 - t) * (1 - t) * sourceX + 2 * (1 - t) * t * cpX + t * t * targetX;
-  const ay = (1 - t) * (1 - t) * sourceY + 2 * (1 - t) * t * cpY + t * t * targetY;
-  const angle = Math.atan2(targetY - ay, targetX - ax);
+  // Label position directly above the horizontal segment
+  const labelX = (sourceX + leftX) / 2;
+  const labelY = upY - 12;
 
   return (
     <g>
@@ -52,6 +45,8 @@ export default function ReworkArrow({
         fill="none"
         stroke="transparent"
         strokeWidth={12}
+        strokeLinecap="round"
+        strokeLinejoin="round"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{ cursor: 'default' }}
@@ -63,6 +58,8 @@ export default function ReworkArrow({
         stroke="#F97316"
         strokeWidth={hovered ? 2.5 : 1.5}
         strokeDasharray="6 3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         opacity={0.85}
         pointerEvents="none"
       />
@@ -71,7 +68,7 @@ export default function ReworkArrow({
         points={`0,-4 8,0 0,4`}
         fill="#F97316"
         opacity={0.85}
-        transform={`translate(${targetX},${targetY}) rotate(${(angle * 180) / Math.PI})`}
+        transform={`translate(${targetX},${targetY}) rotate(270)`}
         pointerEvents="none"
       />
       {/* Label */}
