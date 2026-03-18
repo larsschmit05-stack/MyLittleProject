@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import type { Scenario } from '../../types/flow';
 
@@ -8,6 +9,7 @@ interface ScenarioTabsProps {
   activeScenarioId: string;
   onSelectScenario: (id: string) => void;
   onNewScenario: () => void;
+  onContextMenu: (id: string, position: { x: number; y: number }) => void;
   isMobile: boolean;
 }
 
@@ -64,8 +66,19 @@ export default function ScenarioTabs({
   activeScenarioId,
   onSelectScenario,
   onNewScenario,
+  onContextMenu,
   isMobile,
 }: ScenarioTabsProps) {
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current !== null) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
   return (
     <div style={{ ...containerStyle, overflowX: isMobile ? 'auto' : undefined }}>
       <div role="tablist" aria-label="Scenario tabs" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -79,6 +92,26 @@ export default function ScenarioTabs({
               style={isActive ? activeTabStyle : inactiveTabStyle}
               onClick={() => {
                 if (!isActive) onSelectScenario(s.id);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onContextMenu(s.id, { x: e.clientX, y: e.clientY });
+              }}
+              onTouchStart={(e) => {
+                longPressFired.current = false;
+                const touch = e.touches[0];
+                const pos = { x: touch.clientX, y: touch.clientY };
+                longPressTimer.current = setTimeout(() => {
+                  longPressFired.current = true;
+                  onContextMenu(s.id, pos);
+                }, 500);
+              }}
+              onTouchMove={() => clearLongPress()}
+              onTouchEnd={(e) => {
+                clearLongPress();
+                if (longPressFired.current) {
+                  e.preventDefault();
+                }
               }}
             >
               {s.name}

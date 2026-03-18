@@ -3,13 +3,13 @@
 import { useEffect } from 'react';
 import type { CSSProperties } from 'react';
 
-interface UnsavedEditsDialogProps {
-  scenarioName: string;
-  onSave: () => void;
-  onDiscard: () => void;
+interface ConfirmDialogProps {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmDestructive?: boolean;
+  onConfirm: () => void;
   onCancel: () => void;
-  isSaving?: boolean;
-  error?: string | null;
 }
 
 const overlayStyle: CSSProperties = {
@@ -50,19 +50,19 @@ const secondaryBtn: CSSProperties = {
   color: 'var(--color-text-primary)',
 };
 
-const discardBtn: CSSProperties = {
-  ...secondaryBtn,
-  color: 'var(--color-bottleneck)',
+const destructiveBtn: CSSProperties = {
+  ...actionBtn,
+  background: 'var(--color-bottleneck)',
 };
 
-export default function UnsavedEditsDialog({
-  scenarioName,
-  onSave,
-  onDiscard,
+export default function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  confirmDestructive = false,
+  onConfirm,
   onCancel,
-  isSaving = false,
-  error = null,
-}: UnsavedEditsDialogProps) {
+}: ConfirmDialogProps) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onCancel();
@@ -75,21 +75,15 @@ export default function UnsavedEditsDialog({
     <div onClick={onCancel} style={overlayStyle}>
       <div onClick={(e) => e.stopPropagation()} style={cardStyle}>
         <h3 style={{ fontWeight: 600, fontSize: '15px', color: 'var(--color-text-primary)', margin: '0 0 12px 0' }}>
-          Unsaved Changes
+          {title}
         </h3>
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: '0 0 20px 0', lineHeight: '1.5' }}>
-          You have unsaved changes in &ldquo;{scenarioName}&rdquo;. What would you like to do?
+          {message}
         </p>
-        {error && (
-          <p style={{ fontSize: '12px', color: 'var(--color-bottleneck)', margin: '0 0 16px 0', padding: '8px', backgroundColor: 'rgba(255, 0, 0, 0.05)', borderRadius: '4px', lineHeight: '1.4' }}>
-            Save failed: {error}
-          </p>
-        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <button style={secondaryBtn} onClick={onCancel} disabled={isSaving}>Cancel</button>
-          <button style={discardBtn} onClick={onDiscard} disabled={isSaving}>Discard</button>
-          <button style={{ ...actionBtn, opacity: isSaving ? 0.6 : 1, cursor: isSaving ? 'not-allowed' : 'pointer' }} onClick={onSave} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save'}
+          <button style={secondaryBtn} onClick={onCancel}>Cancel</button>
+          <button style={confirmDestructive ? destructiveBtn : actionBtn} onClick={onConfirm}>
+            {confirmLabel}
           </button>
         </div>
       </div>

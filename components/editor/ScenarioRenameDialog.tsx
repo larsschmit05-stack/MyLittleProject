@@ -6,6 +6,8 @@ import { panelLabelStyle, panelInputStyle } from './styles';
 
 interface ScenarioRenameDialogProps {
   initialName: string;
+  title?: string;
+  submitLabel?: string;
   onCreate: (name: string) => void;
   onCancel: () => void;
 }
@@ -56,6 +58,8 @@ const disabledBtn: CSSProperties = {
 
 export default function ScenarioRenameDialog({
   initialName,
+  title = 'New Scenario',
+  submitLabel = 'Create',
   onCreate,
   onCancel,
 }: ScenarioRenameDialogProps) {
@@ -83,7 +87,7 @@ export default function ScenarioRenameDialog({
     <div onClick={onCancel} style={overlayStyle}>
       <div onClick={(e) => e.stopPropagation()} style={cardStyle}>
         <h3 style={{ fontWeight: 600, fontSize: '15px', color: 'var(--color-text-primary)', margin: '0 0 16px 0' }}>
-          New Scenario
+          {title}
         </h3>
         <div style={{ marginBottom: '20px' }}>
           <label style={panelLabelStyle}>Scenario Name</label>
@@ -105,7 +109,7 @@ export default function ScenarioRenameDialog({
             onClick={handleSubmit}
             disabled={!isValid}
           >
-            Create
+            {submitLabel}
           </button>
         </div>
       </div>

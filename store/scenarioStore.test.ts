@@ -8,13 +8,14 @@ import type { DbScenario } from '../types/scenario';
 const mockGetScenarios = vi.fn();
 const mockCreateScenario = vi.fn();
 const mockUpdateScenario = vi.fn();
+const mockDeleteScenario = vi.fn();
 const mockInsertModel = vi.fn();
 
 vi.mock('../lib/db/scenarios', () => ({
   getScenarios: (...args: unknown[]) => mockGetScenarios(...args),
   createScenario: (...args: unknown[]) => mockCreateScenario(...args),
   updateScenario: (...args: unknown[]) => mockUpdateScenario(...args),
-  deleteScenario: vi.fn(),
+  deleteScenario: (...args: unknown[]) => mockDeleteScenario(...args),
 }));
 
 vi.mock('../lib/persistence', () => ({
@@ -44,8 +45,11 @@ const BASELINE_INITIAL = {
   isSaving: false,
   saveError: null as string | null,
   savedSnapshots: {} as Record<string, SerializedModel>,
+  persistedScenarioIds: new Set<string>(),
   isSavingScenario: false,
   scenarioSaveError: null as string | null,
+  isDeletingScenario: false,
+  scenarioDeleteError: null as string | null,
   pendingSwitchTarget: null as string | null,
 };
 
@@ -114,6 +118,7 @@ describe('saveScenarioToDb', () => {
       activeScenarioId: 's1',
       globalDemand: 100,
       savedSnapshots: { s1: { nodes: [], edges: [], globalDemand: 50 } },
+      persistedScenarioIds: new Set(['s1']),
     });
 
     await useFlowStore.getState().saveScenarioToDb();
@@ -151,6 +156,7 @@ describe('saveScenarioToDb', () => {
       savedModelId: 'm1',
       activeScenarioId: 's1',
       savedSnapshots: { s1: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1']),
     });
 
     await useFlowStore.getState().saveScenarioToDb();
@@ -290,5 +296,293 @@ describe('existing scenario actions (no regressions)', () => {
   it('deleteScenario cannot delete last remaining scenario', () => {
     useFlowStore.getState().deleteScenario('baseline');
     expect(useFlowStore.getState().scenarios).toHaveLength(1);
+  });
+});
+
+// ─── renameScenarioInDb ─────────────────────────────────────────────────────
+
+describe('renameScenarioInDb', () => {
+  it('renames scenario in memory and calls DB update for persisted scenario', async () => {
+    mockUpdateScenario.mockResolvedValue(undefined);
+    useFlowStore.setState({
+      scenarios: [{ id: 's1', name: 'Baseline', model: BASELINE_MODEL }],
+      activeScenarioId: 's1',
+      persistedScenarioIds: new Set(['s1']),
+    });
+
+    await useFlowStore.getState().renameScenarioInDb('s1', 'Renamed');
+
+    expect(useFlowStore.getState().scenarios[0].name).toBe('Renamed');
+    expect(mockUpdateScenario).toHaveBeenCalledWith('s1', { name: 'Renamed' });
+  });
+
+  it('renames in memory without DB call for non-persisted scenario', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 'local', name: 'Draft', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      persistedScenarioIds: new Set(['s1']),
+    });
+
+    await useFlowStore.getState().renameScenarioInDb('local', 'New Name');
+
+    expect(useFlowStore.getState().scenarios[1].name).toBe('New Name');
+    expect(mockUpdateScenario).not.toHaveBeenCalled();
+  });
+
+  it('rolls back name on DB failure', async () => {
+    mockUpdateScenario.mockRejectedValue(new Error('DB error'));
+    useFlowStore.setState({
+      scenarios: [{ id: 's1', name: 'Original', model: BASELINE_MODEL }],
+      activeScenarioId: 's1',
+      persistedScenarioIds: new Set(['s1']),
+    });
+
+    await useFlowStore.getState().renameScenarioInDb('s1', 'Bad Name');
+
+    expect(useFlowStore.getState().scenarios[0].name).toBe('Original');
+  });
+
+  it('does nothing for nonexistent scenario', async () => {
+    useFlowStore.setState({
+      scenarios: [{ id: 's1', name: 'Baseline', model: BASELINE_MODEL }],
+      activeScenarioId: 's1',
+    });
+
+    await useFlowStore.getState().renameScenarioInDb('nonexistent', 'Name');
+
+    expect(mockUpdateScenario).not.toHaveBeenCalled();
+  });
+});
+
+// ─── deleteScenarioFromDb ───────────────────────────────────────────────────
+
+describe('deleteScenarioFromDb', () => {
+  it('removes scenario from array', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockResolvedValue(undefined);
+
+    await useFlowStore.getState().deleteScenarioFromDb('s2');
+
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+    expect(useFlowStore.getState().scenarios[0].id).toBe('s1');
+  });
+
+  it('removes entry from savedSnapshots', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockResolvedValue(undefined);
+
+    await useFlowStore.getState().deleteScenarioFromDb('s2');
+
+    expect(useFlowStore.getState().savedSnapshots['s2']).toBeUndefined();
+    expect(useFlowStore.getState().savedSnapshots['s1']).toBeDefined();
+  });
+
+  it('switches to next scenario if active was deleted', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockResolvedValue(undefined);
+
+    await useFlowStore.getState().deleteScenarioFromDb('s1');
+
+    expect(useFlowStore.getState().activeScenarioId).toBe('s2');
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+  });
+
+  it('does nothing when only 1 scenario remains', async () => {
+    useFlowStore.setState({
+      scenarios: [{ id: 's1', name: 'Baseline', model: BASELINE_MODEL }],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1']),
+    });
+
+    await useFlowStore.getState().deleteScenarioFromDb('s1');
+
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+    expect(mockDeleteScenario).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when scenario ID not found', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+
+    await useFlowStore.getState().deleteScenarioFromDb('nonexistent');
+
+    expect(useFlowStore.getState().scenarios).toHaveLength(2);
+    expect(mockDeleteScenario).not.toHaveBeenCalled();
+  });
+
+  it('calls DB delete for persisted scenarios', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockResolvedValue(undefined);
+
+    await useFlowStore.getState().deleteScenarioFromDb('s2');
+
+    expect(mockDeleteScenario).toHaveBeenCalledWith('s2');
+  });
+
+  it('skips DB call for in-memory-only scenarios (not in persistedScenarioIds)', async () => {
+    // Simulates a duplicated scenario that has a savedSnapshot (duplication origin)
+    // but was never saved to DB — persistedScenarioIds is the authoritative check.
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 'local-only', name: 'Draft', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, 'local-only': BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1']), // local-only is NOT persisted
+    });
+
+    await useFlowStore.getState().deleteScenarioFromDb('local-only');
+
+    expect(mockDeleteScenario).not.toHaveBeenCalled();
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+  });
+
+  it('skips DB call when deleting an unsaved duplicate (has snapshot but not persisted)', async () => {
+    // This is the exact bug scenario: duplicateActiveScenario writes a snapshot,
+    // but the scenario was never saved to DB.
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1']),
+    });
+
+    // Duplicate creates a local scenario with a snapshot but no DB row
+    useFlowStore.getState().duplicateActiveScenario('Draft Copy');
+    const draftId = useFlowStore.getState().scenarios[1].id;
+
+    // Snapshot exists for draft (duplication origin), but it's not persisted
+    expect(useFlowStore.getState().savedSnapshots[draftId]).toBeDefined();
+    expect(useFlowStore.getState().persistedScenarioIds.has(draftId)).toBe(false);
+
+    await useFlowStore.getState().deleteScenarioFromDb(draftId);
+
+    expect(mockDeleteScenario).not.toHaveBeenCalled();
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+  });
+
+  it('rolls back on DB failure', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockRejectedValue(new Error('DB error'));
+
+    await useFlowStore.getState().deleteScenarioFromDb('s2');
+
+    // Scenario should be restored
+    expect(useFlowStore.getState().scenarios).toHaveLength(2);
+    expect(useFlowStore.getState().savedSnapshots['s2']).toBeDefined();
+    expect(useFlowStore.getState().persistedScenarioIds.has('s2')).toBe(true);
+  });
+
+  it('sets scenarioDeleteError on DB failure', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockRejectedValue(new Error('DB error'));
+
+    await useFlowStore.getState().deleteScenarioFromDb('s2');
+
+    expect(useFlowStore.getState().scenarioDeleteError).toBe('DB error');
+    expect(useFlowStore.getState().isDeletingScenario).toBe(false);
+  });
+
+  it('fully rolls back active scenario delete on DB failure (restores editor state)', async () => {
+    const modelA: SerializedModel = { nodes: [], edges: [], globalDemand: 42 };
+    const modelB: SerializedModel = { nodes: [], edges: [], globalDemand: 99 };
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: modelA },
+        { id: 's2', name: 'What-If', model: modelB },
+      ],
+      activeScenarioId: 's1',
+      globalDemand: 42,
+      savedSnapshots: { s1: modelA, s2: modelB },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockRejectedValue(new Error('DB error'));
+
+    await useFlowStore.getState().deleteScenarioFromDb('s1');
+
+    // Active scenario should be restored to s1 with its editor state
+    expect(useFlowStore.getState().activeScenarioId).toBe('s1');
+    expect(useFlowStore.getState().globalDemand).toBe(42);
+    expect(useFlowStore.getState().scenarios).toHaveLength(2);
+  });
+
+  it('removes scenario from persistedScenarioIds on successful delete', async () => {
+    useFlowStore.setState({
+      scenarios: [
+        { id: 's1', name: 'Baseline', model: BASELINE_MODEL },
+        { id: 's2', name: 'What-If', model: BASELINE_MODEL },
+      ],
+      activeScenarioId: 's1',
+      savedSnapshots: { s1: BASELINE_MODEL, s2: BASELINE_MODEL },
+      persistedScenarioIds: new Set(['s1', 's2']),
+    });
+    mockDeleteScenario.mockResolvedValue(undefined);
+
+    await useFlowStore.getState().deleteScenarioFromDb('s2');
+
+    expect(useFlowStore.getState().persistedScenarioIds.has('s2')).toBe(false);
+    expect(useFlowStore.getState().persistedScenarioIds.has('s1')).toBe(true);
   });
 });

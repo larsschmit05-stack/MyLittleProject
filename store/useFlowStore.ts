@@ -11,7 +11,7 @@ import {
 import { isValidConnection as checkConnection, validateGraph, ValidationResult } from '../lib/flow/validation';
 import { calculateFlowDAG } from '../utils/calculations';
 import { insertModel, updateModel, fetchModel } from '../lib/persistence';
-import { getScenarios as fetchScenariosFromDb, createScenario, updateScenario as updateScenarioInDb } from '../lib/db/scenarios';
+import { getScenarios as fetchScenariosFromDb, createScenario, updateScenario as updateScenarioInDb, deleteScenario as deleteScenarioInDb } from '../lib/db/scenarios';
 import type { ScenarioResults } from '../types/scenario';
 import { classifyBottlenecks } from '../components/editor/nodes/processNodeStatus';
 import type {
@@ -42,8 +42,12 @@ interface FlowState {
   saveError: string | null;
   /** Per-scenario snapshots keyed by scenario ID. Represents the last clean state (DB-persisted or duplication origin). */
   savedSnapshots: Record<string, SerializedModel>;
+  /** IDs of scenarios that have been persisted to the DB (have a DB row). */
+  persistedScenarioIds: Set<string>;
   isSavingScenario: boolean;
   scenarioSaveError: string | null;
+  isDeletingScenario: boolean;
+  scenarioDeleteError: string | null;
   /** Set when the user requests a switch while unsaved edits exist. UI reacts by showing a dialog. */
   pendingSwitchTarget: string | null;
 }
@@ -69,6 +73,7 @@ interface FlowActions {
   /** Cancels a pending guarded switch (user chose Cancel). */
   cancelSwitch: () => void;
   deleteScenario: (id: string) => void;
+  deleteScenarioFromDb: (id: string) => Promise<void>;
   saveAsNewModel: (name: string) => Promise<void>;
   updateSavedModel: () => Promise<void>;
   loadModel: (id: string) => Promise<void>;
@@ -76,6 +81,7 @@ interface FlowActions {
   loadScenariosFromDb: (modelId: string) => Promise<void>;
   saveScenarioToDb: () => Promise<void>;
   renameScenario: (id: string, name: string) => void;
+  renameScenarioInDb: (id: string, name: string) => Promise<void>;
   resetToSaved: () => void;
   hasUnsavedEdits: () => boolean;
 }
@@ -170,8 +176,11 @@ const useFlowStore = create<FlowStore>((set, get) => {
     isSaving: false,
     saveError: null,
     savedSnapshots: {},
+    persistedScenarioIds: new Set(),
     isSavingScenario: false,
     scenarioSaveError: null,
+    isDeletingScenario: false,
+    scenarioDeleteError: null,
     pendingSwitchTarget: null,
 
     onNodesChange: (changes) => {
@@ -415,6 +424,82 @@ const useFlowStore = create<FlowStore>((set, get) => {
       set({ scenarios: get().scenarios.filter((s) => s.id !== id) });
     },
 
+    deleteScenarioFromDb: async (id) => {
+      const { scenarios, activeScenarioId, persistedScenarioIds } = get();
+
+      // Guard: cannot delete last scenario
+      if (scenarios.length <= 1) return;
+
+      // Guard: scenario must exist
+      const target = scenarios.find(s => s.id === id);
+      if (!target) return;
+
+      // Use explicit persistence tracking — savedSnapshots includes duplication-origin
+      // snapshots for unsaved duplicates, so it's not a reliable persistence indicator.
+      const isPersisted = persistedScenarioIds.has(id);
+
+      set({ isDeletingScenario: true, scenarioDeleteError: null });
+
+      const wasActive = id === activeScenarioId;
+
+      // Capture full pre-deletion state for rollback on DB failure
+      const prevScenarios = get().scenarios;
+      const prevSnapshots = get().savedSnapshots;
+      const prevActiveId = get().activeScenarioId;
+      const prevNodes = get().nodes;
+      const prevEdges = get().edges;
+      const prevGlobalDemand = get().globalDemand;
+      const prevDerivedResults = get().derivedResults;
+      const prevValidationResult = get().validationResult;
+      const prevSelectedElement = get().selectedElement;
+
+      // If deleting the active scenario, switch to another first
+      if (wasActive) {
+        const remaining = scenarios.filter(s => s.id !== id);
+        get().switchScenario(remaining[0].id);
+      }
+
+      // Remove from memory + clean up snapshot + remove from persisted set
+      const newSnapshots = { ...get().savedSnapshots };
+      delete newSnapshots[id];
+      const newPersisted = new Set(get().persistedScenarioIds);
+      newPersisted.delete(id);
+      set({
+        scenarios: get().scenarios.filter(s => s.id !== id),
+        savedSnapshots: newSnapshots,
+        persistedScenarioIds: newPersisted,
+      });
+
+      // DB delete — only for persisted scenarios
+      if (isPersisted) {
+        try {
+          await deleteScenarioInDb(id);
+        } catch (err) {
+          // Full rollback: restore scenario, snapshots, and editor state
+          set({
+            scenarios: prevScenarios,
+            savedSnapshots: prevSnapshots,
+            persistedScenarioIds: persistedScenarioIds, // restore original set
+            scenarioDeleteError: (err as Error).message,
+          });
+          // If the deleted scenario was active, restore the full editor state
+          if (wasActive) {
+            set({
+              activeScenarioId: prevActiveId,
+              nodes: prevNodes,
+              edges: prevEdges,
+              globalDemand: prevGlobalDemand,
+              derivedResults: prevDerivedResults,
+              validationResult: prevValidationResult,
+              selectedElement: prevSelectedElement,
+            });
+          }
+        }
+      }
+
+      set({ isDeletingScenario: false });
+    },
+
     saveAsNewModel: async (name) => {
       set({ isSaving: true, saveError: null });
       try {
@@ -430,6 +515,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
           scenarios: [{ id: scenarioId, name: 'Baseline', model }],
           activeScenarioId: scenarioId,
           savedSnapshots: { [scenarioId]: snapshot },
+          persistedScenarioIds: new Set([scenarioId]),
         });
       } catch (err) {
         set({ isSaving: false, saveError: (err as Error).message });
@@ -464,8 +550,11 @@ const useFlowStore = create<FlowStore>((set, get) => {
         isSaving: false,
         saveError: null,
         savedSnapshots: {},
+        persistedScenarioIds: new Set(),
         isSavingScenario: false,
         scenarioSaveError: null,
+        isDeletingScenario: false,
+        scenarioDeleteError: null,
         pendingSwitchTarget: null,
       });
     },
@@ -486,8 +575,11 @@ const useFlowStore = create<FlowStore>((set, get) => {
         isSaving: true,
         saveError: null,
         savedSnapshots: {},
+        persistedScenarioIds: new Set(),
         isSavingScenario: false,
         scenarioSaveError: null,
+        isDeletingScenario: false,
+        scenarioDeleteError: null,
         pendingSwitchTarget: null,
       });
       try {
@@ -526,6 +618,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
             scenarios: [{ id: newId, name: 'Baseline', model }],
             activeScenarioId: newId,
             savedSnapshots: { [newId]: JSON.parse(JSON.stringify(model)) },
+            persistedScenarioIds: new Set([newId]),
           });
         } else {
           const scenarios: Scenario[] = dbScenarios.map((s) => ({
@@ -553,6 +646,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
             derivedResults: calculateFlowDAG(firstModel),
             validationResult: validateGraph(nextNodes, nextEdges),
             savedSnapshots: snapshots,
+            persistedScenarioIds: new Set(dbScenarios.map(s => s.id)),
           });
         }
       } catch {
@@ -577,16 +671,19 @@ const useFlowStore = create<FlowStore>((set, get) => {
               ),
             }
           : null;
-        const isNewScenario = !(activeScenarioId in savedSnapshots);
+        const isNewScenario = !get().persistedScenarioIds.has(activeScenarioId);
         if (isNewScenario) {
           // Scenario has no DB row yet — INSERT
           const newId = await createScenario({ model_id: savedModelId, name: get().scenarios.find(s => s.id === activeScenarioId)?.name ?? 'Untitled', data: model, results });
           // Update the in-memory scenario to use the DB-generated ID
           const snapshot = JSON.parse(JSON.stringify(model));
+          const nextPersisted = new Set(get().persistedScenarioIds);
+          nextPersisted.add(newId);
           set({
             scenarios: get().scenarios.map(s => s.id === activeScenarioId ? { ...s, id: newId } : s),
             activeScenarioId: newId,
             savedSnapshots: { ...get().savedSnapshots, [newId]: snapshot },
+            persistedScenarioIds: nextPersisted,
             isSavingScenario: false,
           });
         } else {
@@ -607,6 +704,24 @@ const useFlowStore = create<FlowStore>((set, get) => {
       set({
         scenarios: get().scenarios.map(s => s.id === id ? { ...s, name } : s),
       });
+    },
+
+    renameScenarioInDb: async (id, name) => {
+      const prevName = get().scenarios.find(s => s.id === id)?.name;
+      if (prevName === undefined) return;
+
+      // Optimistic update
+      get().renameScenario(id, name);
+
+      // Persist to DB if the scenario is persisted
+      if (get().persistedScenarioIds.has(id)) {
+        try {
+          await updateScenarioInDb(id, { name });
+        } catch {
+          // Rollback on failure
+          get().renameScenario(id, prevName);
+        }
+      }
     },
 
     resetToSaved: () => {

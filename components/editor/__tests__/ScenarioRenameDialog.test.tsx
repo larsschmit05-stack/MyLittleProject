@@ -84,4 +84,18 @@ describe('ScenarioRenameDialog', () => {
     await userEvent.click(screen.getByText('Cancel'));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it('uses custom title and submitLabel when provided', () => {
+    render(
+      <ScenarioRenameDialog
+        initialName="Baseline"
+        title="Rename Scenario"
+        submitLabel="Rename"
+        onCreate={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+    expect(screen.getByText('Rename Scenario')).toBeDefined();
+    expect(screen.getByText('Rename')).toBeDefined();
+  });
 });

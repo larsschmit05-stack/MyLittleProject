@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ScenarioTabs from '../ScenarioTabs';
 import type { Scenario } from '../../../types/flow';
@@ -9,6 +9,15 @@ const mockScenarios: Scenario[] = [
   { id: 's2', name: 'High Demand', model: { nodes: [], edges: [], globalDemand: 100 } },
 ];
 
+const defaultProps = {
+  scenarios: mockScenarios,
+  activeScenarioId: 's1',
+  onSelectScenario: vi.fn(),
+  onNewScenario: vi.fn(),
+  onContextMenu: vi.fn(),
+  isMobile: false,
+};
+
 describe('ScenarioTabs', () => {
   it('renders all scenario names as tabs', () => {
     render(
@@ -17,6 +26,7 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={vi.fn()}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={false}
       />
     );
@@ -31,6 +41,7 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={vi.fn()}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={false}
       />
     );
@@ -47,6 +58,7 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={onSelect}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={false}
       />
     );
@@ -62,6 +74,7 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={onSelect}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={false}
       />
     );
@@ -91,6 +104,7 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={vi.fn()}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={false}
       />
     );
@@ -104,6 +118,7 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={vi.fn()}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={true}
       />
     );
@@ -117,9 +132,27 @@ describe('ScenarioTabs', () => {
         activeScenarioId="s1"
         onSelectScenario={vi.fn()}
         onNewScenario={vi.fn()}
+        onContextMenu={vi.fn()}
         isMobile={false}
       />
     );
     expect(screen.getByText('+ New Scenario')).toBeDefined();
+  });
+
+  it('calls onContextMenu with id and position on right-click', () => {
+    const onCtx = vi.fn();
+    render(<ScenarioTabs {...defaultProps} onContextMenu={onCtx} />);
+    const tab = screen.getByText('Baseline');
+    fireEvent.contextMenu(tab, { clientX: 50, clientY: 60 });
+    expect(onCtx).toHaveBeenCalledWith('s1', { x: 50, y: 60 });
+  });
+
+  it('prevents default context menu on right-click', () => {
+    render(<ScenarioTabs {...defaultProps} />);
+    const tab = screen.getByText('High Demand');
+    const event = new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 });
+    const spy = vi.spyOn(event, 'preventDefault');
+    tab.dispatchEvent(event);
+    expect(spy).toHaveBeenCalled();
   });
 });
