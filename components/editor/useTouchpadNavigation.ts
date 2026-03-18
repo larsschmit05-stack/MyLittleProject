@@ -12,7 +12,7 @@ const PAN_SENSITIVITY = 2;
  * - Alt + scroll: vertical pan
  * - Two-finger trackpad scroll: natural panning
  */
-export function useTouchpadNavigation(containerRef: React.RefObject<HTMLDivElement>) {
+export function useTouchpadNavigation(containerRef: React.RefObject<HTMLDivElement | null>) {
   const { getZoom, setZoom } = useReactFlow();
 
   useEffect(() => {
