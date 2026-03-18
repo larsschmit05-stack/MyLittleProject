@@ -636,7 +636,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
           const nextEdges = firstModel.edges.map((e) => ({ ...e }));
           // Results from DB are intentionally not loaded into derivedResults —
           // we recompute from data so the active simulation is always fresh.
-          // Stored results will be used by the comparison view (Phase 8-10).
+          // The comparison view also recomputes from scenario.model on the fly.
           set({
             scenarios,
             activeScenarioId: scenarios[0].id,

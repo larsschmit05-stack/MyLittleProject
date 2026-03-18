@@ -3,11 +3,16 @@
 import { Handle, Position, NodeProps } from 'reactflow';
 import { getNodeStyle, nodeLabelStyle } from '../styles';
 import useFlowStore from '../../../store/useFlowStore';
+import { useReadOnlyFlow } from '../ReadOnlyFlowContext';
 
 export default function SinkNode({ id, data, selected }: NodeProps<{ label: string }>) {
-  const hasValidationError = useFlowStore((s) =>
+  const readOnly = useReadOnlyFlow();
+  const storeHasValidationError = useFlowStore((s) =>
     s.validationResult?.errorDetails?.some(e => e.nodeIds.includes(id)) ?? false
   );
+  const hasValidationError = readOnly
+    ? (readOnly.validationResult?.errorDetails?.some(e => e.nodeIds.includes(id)) ?? false)
+    : storeHasValidationError;
 
   const style = {
     ...getNodeStyle(selected),

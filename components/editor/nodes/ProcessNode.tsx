@@ -5,6 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import type { ProcessNodeData } from '../../../types/flow';
 import { getNodeStyle, nodeLabelStyle, nodeValueStyle } from '../styles';
 import useFlowStore from '../../../store/useFlowStore';
+import { useReadOnlyFlow } from '../ReadOnlyFlowContext';
 import {
   getProcessNodeStatusColor,
   shouldShowProcessNodeWarning,
@@ -21,12 +22,22 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
   const [showTooltip, setShowTooltip] = useState(false);
   const [nodeHovered, setNodeHovered] = useState(false);
 
-  const nodeResult = useFlowStore((s) => s.derivedResults?.nodeResults[id] ?? null);
-  const nodes = useFlowStore((s) => s.nodes);
-  const allNodeResults = useFlowStore((s) => s.derivedResults?.nodeResults ?? {});
-  const hasValidationError = useFlowStore((s) =>
+  const readOnly = useReadOnlyFlow();
+
+  // Always call store hooks (rules of hooks), but prefer context values when in comparison mode
+  const storeNodeResult = useFlowStore((s) => s.derivedResults?.nodeResults[id] ?? null);
+  const storeNodes = useFlowStore((s) => s.nodes);
+  const storeAllNodeResults = useFlowStore((s) => s.derivedResults?.nodeResults ?? {});
+  const storeHasValidationError = useFlowStore((s) =>
     s.validationResult?.errorDetails?.some(e => e.nodeIds.includes(id)) ?? false
   );
+
+  const nodeResult = readOnly ? (readOnly.derivedResults?.nodeResults[id] ?? null) : storeNodeResult;
+  const nodes = readOnly ? readOnly.nodes : storeNodes;
+  const allNodeResults = readOnly ? (readOnly.derivedResults?.nodeResults ?? {}) : storeAllNodeResults;
+  const hasValidationError = readOnly
+    ? (readOnly.validationResult?.errorDetails?.some(e => e.nodeIds.includes(id)) ?? false)
+    : storeHasValidationError;
 
   const statusColor = nodeResult
     ? getProcessNodeStatusColor(nodeResult.utilization)

@@ -10,6 +10,10 @@ interface ScenarioTabsProps {
   onSelectScenario: (id: string) => void;
   onNewScenario: () => void;
   onContextMenu: (id: string, position: { x: number; y: number }) => void;
+  onCompare: () => void;
+  canCompare: boolean;
+  onExport: () => void;
+  isExporting?: boolean;
   isMobile: boolean;
 }
 
@@ -61,12 +65,24 @@ const newBtnStyle: CSSProperties = {
   fontWeight: 400,
 };
 
+const compareBtnStyle: CSSProperties = {
+  ...tabBase,
+  background: 'transparent',
+  border: '1px solid var(--color-border)',
+  color: 'var(--color-text-primary)',
+  fontWeight: 400,
+};
+
 export default function ScenarioTabs({
   scenarios,
   activeScenarioId,
   onSelectScenario,
   onNewScenario,
   onContextMenu,
+  onCompare,
+  canCompare,
+  onExport,
+  isExporting = false,
   isMobile,
 }: ScenarioTabsProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,6 +140,30 @@ export default function ScenarioTabs({
           aria-label="Create new scenario"
         >
           {isMobile ? '+ New' : '+ New Scenario'}
+        </button>
+        <button
+          style={{
+            ...compareBtnStyle,
+            opacity: canCompare ? 1 : 0.4,
+            cursor: canCompare ? 'pointer' : 'not-allowed',
+          }}
+          onClick={canCompare ? onCompare : undefined}
+          disabled={!canCompare}
+          aria-label="Compare scenarios"
+        >
+          Compare
+        </button>
+        <button
+          style={{
+            ...compareBtnStyle,
+            opacity: isExporting ? 0.6 : 1,
+            cursor: isExporting ? 'wait' : 'pointer',
+          }}
+          onClick={isExporting ? undefined : onExport}
+          disabled={isExporting}
+          aria-label="Export scenario as PDF"
+        >
+          {isExporting ? 'Exporting...' : (isMobile ? 'PDF' : 'Export PDF')}
         </button>
       </div>
     </div>

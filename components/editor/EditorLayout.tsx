@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NodePalette from "./NodePalette";
 import CanvasArea from "./CanvasArea";
 import PropertiesPanel from "./PropertiesPanel";
@@ -11,6 +11,8 @@ import UnsavedEditsDialog from './UnsavedEditsDialog';
 import ScenarioRenameDialog from './ScenarioRenameDialog';
 import ScenarioContextMenu from './ScenarioContextMenu';
 import ConfirmDialog from './ConfirmDialog';
+import ComparisonSelectDialog from './ComparisonSelectDialog';
+import ComparisonView from './ComparisonView';
 import { useFloatingPanel } from "../../hooks/useFloatingPanel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import useFlowStore from '../../store/useFlowStore';
@@ -51,6 +53,13 @@ export default function EditorLayout() {
     position: { x: number; y: number };
   } | null>(null);
   const [deletingScenarioId, setDeletingScenarioId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [isCompareDialogOpen, setIsCompareDialogOpen] = useState(false);
+  const [comparisonPair, setComparisonPair] = useState<{
+    scenario1Id: string;
+    scenario2Id: string;
+  } | null>(null);
 
   function handleSelectScenario(id: string) {
     if (renamingScenarioId !== null) return;
@@ -113,6 +122,36 @@ export default function EditorLayout() {
 
   const activeScenario = scenarios.find(s => s.id === activeScenarioId);
 
+  async function handleExport() {
+    if (isExporting) return;
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const { generateScenarioPdf } = await import('../../lib/export/pdf');
+      const state = useFlowStore.getState();
+      await generateScenarioPdf({
+        scenarioName: activeScenario?.name ?? 'Untitled',
+        model: state.getSerializedModel(),
+        derivedResults: state.derivedResults,
+        validationResult: state.validationResult,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setExportError(message);
+    } finally {
+      setIsExporting(false);
+    }
+  }
+  const comparisonScenario1 = comparisonPair ? scenarios.find(s => s.id === comparisonPair.scenario1Id) : undefined;
+  const comparisonScenario2 = comparisonPair ? scenarios.find(s => s.id === comparisonPair.scenario2Id) : undefined;
+
+  // Auto-close comparison if a scenario was deleted
+  useEffect(() => {
+    if (comparisonPair && (!comparisonScenario1 || !comparisonScenario2)) {
+      setComparisonPair(null);
+    }
+  }, [comparisonPair, comparisonScenario1, comparisonScenario2]);
+
   return (
     <div
       style={{
@@ -131,6 +170,10 @@ export default function EditorLayout() {
         onSelectScenario={handleSelectScenario}
         onNewScenario={handleNewScenario}
         onContextMenu={handleContextMenu}
+        onCompare={() => setIsCompareDialogOpen(true)}
+        canCompare={scenarios.length >= 2}
+        onExport={handleExport}
+        isExporting={isExporting}
         isMobile={!isDesktop}
       />
 
@@ -232,6 +275,33 @@ export default function EditorLayout() {
           confirmLabel="OK"
           onConfirm={() => useFlowStore.setState({ scenarioDeleteError: null })}
           onCancel={() => useFlowStore.setState({ scenarioDeleteError: null })}
+        />
+      )}
+      {exportError !== null && (
+        <ConfirmDialog
+          title="Export Failed"
+          message={`Could not generate PDF: ${exportError}`}
+          confirmLabel="OK"
+          onConfirm={() => setExportError(null)}
+          onCancel={() => setExportError(null)}
+        />
+      )}
+      {isCompareDialogOpen && (
+        <ComparisonSelectDialog
+          scenarios={scenarios}
+          defaultScenario1Id={activeScenarioId}
+          onCompare={(id1, id2) => {
+            setComparisonPair({ scenario1Id: id1, scenario2Id: id2 });
+            setIsCompareDialogOpen(false);
+          }}
+          onCancel={() => setIsCompareDialogOpen(false)}
+        />
+      )}
+      {comparisonPair !== null && comparisonScenario1 && comparisonScenario2 && (
+        <ComparisonView
+          scenario1={comparisonScenario1}
+          scenario2={comparisonScenario2}
+          onClose={() => setComparisonPair(null)}
         />
       )}
     </div>
