@@ -2,7 +2,8 @@
 
 import { useRef, useEffect, useCallback } from 'react';
 import useFlowStore from '../../store/useFlowStore';
-import { SelectionContent, fmt, fmtPct } from './PropertiesPanel';
+import { SelectionContent } from './PropertiesPanel';
+import { fmt, fmtPct } from '../../lib/formatting';
 import { panelDividerStyle, panelSectionHeadingStyle } from './styles';
 import type { PanelSnapshot } from '../../hooks/useFloatingPanel';
 import type { ProcessNodeData, SourceNodeData } from '../../types/flow';
