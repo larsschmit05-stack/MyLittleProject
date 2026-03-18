@@ -12,7 +12,6 @@ import {
   panelFieldGroupStyle,
   panelDividerStyle,
 } from './styles';
-import ScenarioManager from './ScenarioManager';
 import { classifyBottlenecks } from './nodes/processNodeStatus';
 
 
@@ -741,8 +740,6 @@ export default function PropertiesPanel({ isFloating }: PropertiesPanelProps) {
 
   return (
     <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
-      <ScenarioManager />
-      <hr style={panelDividerStyle} />
       <GlobalDemandSection />
       <hr style={panelDividerStyle} />
       <ResultsSummary />

@@ -114,3 +114,23 @@ V1.8 is complete when:
 - Use `dev` branch, not `main`
 - See `docs/AI_ROLES.md` for git workflow and commit conventions
 - Previous phase archives available at `docs/archive/`
+
+---
+
+## 🛠️ Custom Commands
+
+### `/save` — Commit and Push to Dev Branch
+
+When `/save` is invoked:
+1. Review all changes (`git status`)
+2. Stage all modified files (`git add`)
+3. Create a conventional commit message (feat:, fix:, docs:, etc.)
+4. Commit the changes
+5. Push to `origin/dev` branch
+6. Show confirmation with branch and commit hash
+
+**Guidelines:**
+- Keep commit message summary ≤50 characters
+- Follow conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, etc.
+- Include context in body if changes are substantial (>5 files)
+- Example: `feat: add scenario comparison view with metrics display`

@@ -46,6 +46,7 @@ const BASELINE_INITIAL = {
   savedSnapshots: {} as Record<string, SerializedModel>,
   isSavingScenario: false,
   scenarioSaveError: null as string | null,
+  pendingSwitchTarget: null as string | null,
 };
 
 beforeEach(() => {
@@ -280,10 +281,10 @@ describe('existing scenario actions (no regressions)', () => {
     expect(useFlowStore.getState().scenarios).toHaveLength(2);
   });
 
-  it('duplicated scenario is not in savedSnapshots (treated as new)', () => {
+  it('duplicated scenario has a snapshot (duplication origin for reset)', () => {
     useFlowStore.getState().duplicateActiveScenario('What-If');
     const whatIfId = useFlowStore.getState().scenarios[1].id;
-    expect(useFlowStore.getState().savedSnapshots[whatIfId]).toBeUndefined();
+    expect(useFlowStore.getState().savedSnapshots[whatIfId]).toBeDefined();
   });
 
   it('deleteScenario cannot delete last remaining scenario', () => {

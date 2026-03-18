@@ -40,10 +40,12 @@ interface FlowState {
   savedModelName: string;
   isSaving: boolean;
   saveError: string | null;
-  /** Per-scenario snapshots keyed by scenario ID. Present = persisted in DB. */
+  /** Per-scenario snapshots keyed by scenario ID. Represents the last clean state (DB-persisted or duplication origin). */
   savedSnapshots: Record<string, SerializedModel>;
   isSavingScenario: boolean;
   scenarioSaveError: string | null;
+  /** Set when the user requests a switch while unsaved edits exist. UI reacts by showing a dialog. */
+  pendingSwitchTarget: string | null;
 }
 
 interface FlowActions {
@@ -60,6 +62,12 @@ interface FlowActions {
   getSerializedModel: () => SerializedModel;
   duplicateActiveScenario: (name: string) => void;
   switchScenario: (id: string) => void;
+  /** Guarded switch: checks for unsaved edits, sets pendingSwitchTarget if dirty, else switches immediately. */
+  requestSwitchScenario: (id: string) => void;
+  /** Completes a pending guarded switch after the user chose Save or Discard. */
+  confirmSwitch: (action: 'save' | 'discard') => Promise<void>;
+  /** Cancels a pending guarded switch (user chose Cancel). */
+  cancelSwitch: () => void;
   deleteScenario: (id: string) => void;
   saveAsNewModel: (name: string) => Promise<void>;
   updateSavedModel: () => Promise<void>;
@@ -67,6 +75,7 @@ interface FlowActions {
   resetStore: () => void;
   loadScenariosFromDb: (modelId: string) => Promise<void>;
   saveScenarioToDb: () => Promise<void>;
+  renameScenario: (id: string, name: string) => void;
   resetToSaved: () => void;
   hasUnsavedEdits: () => boolean;
 }
@@ -163,6 +172,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
     savedSnapshots: {},
     isSavingScenario: false,
     scenarioSaveError: null,
+    pendingSwitchTarget: null,
 
     onNodesChange: (changes) => {
       const currentState = get();
@@ -343,7 +353,12 @@ const useFlowStore = create<FlowStore>((set, get) => {
     duplicateActiveScenario: (name) => {
       const model = get().getSerializedModel();
       const newScenario: Scenario = { id: crypto.randomUUID(), name, model };
-      set({ scenarios: [...get().scenarios, newScenario] });
+      // Snapshot the duplication origin so resetToSaved() can revert to it
+      const snapshot: SerializedModel = JSON.parse(JSON.stringify(model));
+      set({
+        scenarios: [...get().scenarios, newScenario],
+        savedSnapshots: { ...get().savedSnapshots, [newScenario.id]: snapshot },
+      });
     },
 
     switchScenario: (id) => {
@@ -362,6 +377,32 @@ const useFlowStore = create<FlowStore>((set, get) => {
         derivedResults: calculateFlowDAG(model),
         validationResult: validateGraph(nextNodes, nextEdges),
       });
+    },
+
+    requestSwitchScenario: (id) => {
+      if (id === get().activeScenarioId) return;
+      if (get().hasUnsavedEdits()) {
+        set({ pendingSwitchTarget: id });
+      } else {
+        get().switchScenario(id);
+      }
+    },
+
+    confirmSwitch: async (action) => {
+      const { pendingSwitchTarget } = get();
+      if (!pendingSwitchTarget) return;
+      if (action === 'save') {
+        await get().saveScenarioToDb();
+        if (get().scenarioSaveError) return; // Save failed — don't switch
+      } else {
+        get().resetToSaved();
+      }
+      get().switchScenario(pendingSwitchTarget);
+      set({ pendingSwitchTarget: null });
+    },
+
+    cancelSwitch: () => {
+      set({ pendingSwitchTarget: null });
     },
 
     deleteScenario: (id) => {
@@ -425,6 +466,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         savedSnapshots: {},
         isSavingScenario: false,
         scenarioSaveError: null,
+        pendingSwitchTarget: null,
       });
     },
 
@@ -446,6 +488,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         savedSnapshots: {},
         isSavingScenario: false,
         scenarioSaveError: null,
+        pendingSwitchTarget: null,
       });
       try {
         const row = await fetchModel(id);
@@ -560,6 +603,12 @@ const useFlowStore = create<FlowStore>((set, get) => {
       }
     },
 
+    renameScenario: (id, name) => {
+      set({
+        scenarios: get().scenarios.map(s => s.id === id ? { ...s, name } : s),
+      });
+    },
+
     resetToSaved: () => {
       const { savedSnapshots, activeScenarioId } = get();
       const snapshot = savedSnapshots[activeScenarioId];
@@ -582,7 +631,32 @@ const useFlowStore = create<FlowStore>((set, get) => {
       const { savedSnapshots, activeScenarioId } = get();
       const snapshot = savedSnapshots[activeScenarioId];
       if (!snapshot) return true; // Never saved → always dirty
-      return JSON.stringify(get().getSerializedModel()) !== JSON.stringify(snapshot);
+
+      const current = get().getSerializedModel();
+
+      // Deep equality check: nodes, edges, globalDemand
+      if (current.globalDemand !== snapshot.globalDemand) return true;
+      if (current.nodes.length !== snapshot.nodes.length) return true;
+      if (current.edges.length !== snapshot.edges.length) return true;
+
+      // Check node changes (id, type, position, data)
+      for (let i = 0; i < current.nodes.length; i++) {
+        const cn = current.nodes[i];
+        const sn = snapshot.nodes[i];
+        if (cn.id !== sn.id || cn.type !== sn.type) return true;
+        if (JSON.stringify(cn.data) !== JSON.stringify(sn.data)) return true;
+        if (JSON.stringify(cn.position) !== JSON.stringify(sn.position)) return true;
+      }
+
+      // Check edge changes (id, source, target, data)
+      for (let i = 0; i < current.edges.length; i++) {
+        const ce = current.edges[i];
+        const se = snapshot.edges[i];
+        if (ce.id !== se.id || ce.source !== se.source || ce.target !== se.target) return true;
+        if (JSON.stringify(ce.data) !== JSON.stringify(se.data)) return true;
+      }
+
+      return false;
     },
   };
 });
