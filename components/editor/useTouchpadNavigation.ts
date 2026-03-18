@@ -13,25 +13,24 @@ const PAN_SENSITIVITY = 2;
  * - Two-finger trackpad scroll: natural panning
  */
 export function useTouchpadNavigation(containerRef: React.RefObject<HTMLDivElement | null>) {
-  const { getZoom, setZoom } = useReactFlow();
+  const { getViewport, setViewport } = useReactFlow();
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const container = containerRef.current;
-    const flowElement = container.querySelector('.react-flow__viewport') as HTMLElement;
 
     const handleWheel = (event: WheelEvent) => {
       // Pinch-to-zoom on trackpad (Ctrl or Cmd key)
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
 
-        const currentZoom = getZoom();
+        const viewport = getViewport();
         // Use deltaY for zoom (positive = zoom out, negative = zoom in)
         const delta = event.deltaY > 0 ? -0.1 : 0.1;
-        const newZoom = Math.max(0.1, Math.min(4, currentZoom + delta));
+        const newZoom = Math.max(0.1, Math.min(4, viewport.zoom + delta));
 
-        setZoom(newZoom);
+        setViewport({ x: viewport.x, y: viewport.y, zoom: newZoom });
       }
     };
 
@@ -40,5 +39,5 @@ export function useTouchpadNavigation(containerRef: React.RefObject<HTMLDivEleme
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, [containerRef, getZoom, setZoom]);
+  }, [containerRef, getViewport, setViewport]);
 }
