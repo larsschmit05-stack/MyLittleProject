@@ -260,6 +260,49 @@ export async function generateScenarioPdf(params: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   y = ((doc as any).lastAutoTable?.finalY ?? y) + 20;
 
+  // ─── Rework Analysis (conditional) ──────────────────────────────────────────
+  if (derivedResults?.rework && derivedResults.rework.totalReworkCycles > 0) {
+    const rework = derivedResults.rework;
+    const reworkSpaceNeeded = 80 + rework.reworkSources.length * 14;
+    const pageH2 = doc.internal.pageSize.getHeight();
+    if (y + reworkSpaceNeeded > pageH2) {
+      doc.addPage();
+      y = 40;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...COLOR_TEXT);
+    doc.text('REWORK ANALYSIS', marginL, y);
+    y += 18;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...COLOR_TEXT_SEC);
+    doc.text(`Rework Cycles: ${fmt(rework.totalReworkCycles)} units/hr (${fmtPct(rework.reworkRate)})`, marginL, y);
+    y += 14;
+    doc.text(`Convergence: ${rework.converged ? 'Yes' : 'No'} (${rework.convergenceIterations} iterations)`, marginL, y);
+    y += 14;
+
+    if (!rework.converged) {
+      doc.setTextColor(...COLOR_WARNING);
+      doc.text('\u26A0 Rework simulation did not converge \u2014 results are approximate.', marginL, y);
+      doc.setTextColor(...COLOR_TEXT_SEC);
+      y += 14;
+    }
+
+    if (rework.reworkSources.length > 0) {
+      doc.text('Rework Sources:', marginL, y);
+      y += 14;
+      for (const rs of rework.reworkSources) {
+        doc.text(`  \u2022 ${rs.nodeName}: ${rs.percentage}% \u2192 ${rs.targetNodeName} (${fmt(rs.reworkAmount)} units/hr)`, marginL, y);
+        y += 14;
+      }
+    }
+
+    y += 10;
+  }
+
   // ─── Utilization Legend ─────────────────────────────────────────────────────
   // Space needed: title (14) + 3 legend rows (3*12=36) + gap (20) + footer (38) = ~108pt
   const pageH = doc.internal.pageSize.getHeight();
@@ -304,7 +347,7 @@ export async function generateScenarioPdf(params: {
 
   doc.setFontSize(8);
   doc.setTextColor(...COLOR_TEXT_SEC);
-  doc.text(`Generated: ${dateTimeStr}  |  OPM Scenario Manager v1.8`, marginL, footerY);
+  doc.text(`Generated: ${dateTimeStr}  |  OPM Scenario Manager v1.9`, marginL, footerY);
 
   // ─── Save ──────────────────────────────────────────────────────────────────
   const safeName = sanitizeFilename(scenarioName) || 'Untitled';

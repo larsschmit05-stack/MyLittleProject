@@ -13,6 +13,7 @@ import {
   panelDividerStyle,
 } from './styles';
 import MetricsPanel from './MetricsPanel';
+import ReworkSettings from './ReworkSettings';
 
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
@@ -334,6 +335,7 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
       ))}
 
       <BomSection nodeId={nodeId} data={data} />
+      <ReworkSettings nodeId={nodeId} data={data} />
 
       {incomingReal.length >= 1 && (
         <div style={{ ...panelFieldGroupStyle, marginTop: '16px' }}>

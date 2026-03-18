@@ -3,7 +3,7 @@
 import { useMemo, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import type { Scenario, FlowNode, EdgeData } from '../../types/flow';
-import { calculateFlowDAG } from '../../utils/calculations';
+import { simulateWithRework } from '../../utils/rework';
 import { validateGraph } from '../../lib/flow/validation';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import ReadOnlyCanvas from './ReadOnlyCanvas';
@@ -53,7 +53,7 @@ function useScenarioData(scenario: Scenario) {
     const model = scenario.model;
     const nodes = JSON.parse(JSON.stringify(model.nodes)) as FlowNode[];
     const edges = model.edges.map(e => ({ ...e }));
-    const derivedResults = calculateFlowDAG(model);
+    const derivedResults = simulateWithRework(model);
     const validationResult = validateGraph(
       nodes as unknown as Node[],
       edges as unknown as Edge<EdgeData>[],

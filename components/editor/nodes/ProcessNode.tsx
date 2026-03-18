@@ -217,6 +217,31 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
             : ''}
         </div>
       )}
+      {/* Rework badge */}
+      {data.reworkLoops && data.reworkLoops.length > 0 && !hasValidationError && !showBottleneckBadge && (
+        <div
+          title={data.reworkLoops
+            .map((l) => `${l.percentage}% rework`)
+            .join(', ')}
+          style={{
+            position: 'absolute',
+            top: '-20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: '9px',
+            fontWeight: 600,
+            color: '#F97316',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            whiteSpace: 'nowrap',
+            background: 'var(--color-bg-primary)',
+            padding: '1px 4px',
+            borderRadius: '2px',
+          }}
+        >
+          Rework
+        </div>
+      )}
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
     </div>

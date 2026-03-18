@@ -9,7 +9,7 @@ import {
   EdgeChange,
 } from 'reactflow';
 import { isValidConnection as checkConnection, validateGraph, ValidationResult } from '../lib/flow/validation';
-import { calculateFlowDAG } from '../utils/calculations';
+import { simulateWithRework } from '../utils/rework';
 import { insertModel, updateModel, fetchModel } from '../lib/persistence';
 import { getScenarios as fetchScenariosFromDb, createScenario, updateScenario as updateScenarioInDb, deleteScenario as deleteScenarioInDb } from '../lib/db/scenarios';
 import type { ScenarioResults } from '../types/scenario';
@@ -50,6 +50,8 @@ interface FlowState {
   scenarioDeleteError: string | null;
   /** Set when the user requests a switch while unsaved edits exist. UI reacts by showing a dialog. */
   pendingSwitchTarget: string | null;
+  /** Warning message shown when node deletion clears rework loops on other nodes. */
+  reworkCleanupWarning: string | null;
 }
 
 interface FlowActions {
@@ -84,6 +86,7 @@ interface FlowActions {
   renameScenarioInDb: (id: string, name: string) => Promise<void>;
   resetToSaved: () => void;
   hasUnsavedEdits: () => boolean;
+  dismissReworkCleanupWarning: () => void;
 }
 
 type FlowStore = FlowState & FlowActions;
@@ -182,6 +185,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
     isDeletingScenario: false,
     scenarioDeleteError: null,
     pendingSwitchTarget: null,
+    reworkCleanupWarning: null,
 
     onNodesChange: (changes) => {
       const currentState = get();
@@ -198,8 +202,30 @@ const useFlowStore = create<FlowStore>((set, get) => {
       });
 
       if (changes.some((c) => c.type === 'remove')) {
+        // Clean up rework loops targeting deleted nodes
+        const removedIds = new Set(
+          changes.filter(c => c.type === 'remove').map(c => c.id)
+        );
+        const currentNodes = get().nodes;
+        const affectedNodes: string[] = [];
+        const cleanedNodes = currentNodes.map(n => {
+          if (n.type !== 'process') return n;
+          const data = n.data as ProcessNodeData;
+          if (!data.reworkLoops?.length) return n;
+          const filtered = data.reworkLoops.filter(l => !removedIds.has(l.targetNodeId));
+          if (filtered.length === data.reworkLoops.length) return n;
+          affectedNodes.push(data.name);
+          return { ...n, data: { ...data, reworkLoops: filtered.length > 0 ? filtered : undefined } } as FlowNode;
+        });
+        if (affectedNodes.length > 0) {
+          set({
+            nodes: cleanedNodes,
+            reworkCleanupWarning: `${affectedNodes.join(', ')} had rework to a deleted node. Rework settings cleared.`,
+          });
+        }
+
         const { nodes: n, edges: e } = get();
-        set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+        set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       }
 
       syncActiveScenario();
@@ -248,7 +274,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
 
       if (changes.some((c) => c.type === 'add' || c.type === 'remove')) {
         const { nodes: n, edges: e } = get();
-        set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+        set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       }
 
       syncActiveScenario();
@@ -289,14 +315,14 @@ const useFlowStore = create<FlowStore>((set, get) => {
       }
 
       const { nodes: n, edges: e } = get();
-      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+      set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
     addNode: (node) => {
       set({ nodes: [...get().nodes, node] });
       const { nodes: n, edges: e } = get();
-      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+      set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
@@ -309,7 +335,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         ) as FlowNode[],
       });
       const { nodes: n, edges: e } = get();
-      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+      set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
@@ -331,14 +357,14 @@ const useFlowStore = create<FlowStore>((set, get) => {
         ),
       });
       const { nodes: n, edges: e } = get();
-      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+      set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
     setGlobalDemand: (demand) => {
       set({ globalDemand: demand });
       const { nodes: n, edges: e } = get();
-      set({ derivedResults: calculateFlowDAG(get().getSerializedModel()), validationResult: validateGraph(n, e) });
+      set({ derivedResults: simulateWithRework(get().getSerializedModel()), validationResult: validateGraph(n, e) });
       syncActiveScenario();
     },
 
@@ -383,7 +409,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         globalDemand: model.globalDemand,
         activeScenarioId: id,
         selectedElement: null,
-        derivedResults: calculateFlowDAG(model),
+        derivedResults: simulateWithRework(model),
         validationResult: validateGraph(nextNodes, nextEdges),
       });
     },
@@ -556,6 +582,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
         isDeletingScenario: false,
         scenarioDeleteError: null,
         pendingSwitchTarget: null,
+        reworkCleanupWarning: null,
       });
     },
 
@@ -591,7 +618,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
           nodes: nextNodes,
           edges: nextEdges,
           globalDemand: model.globalDemand,
-          derivedResults: calculateFlowDAG(model),
+          derivedResults: simulateWithRework(model),
           validationResult: validateGraph(nextNodes, nextEdges),
           selectedElement: null,
           savedModelId: id,
@@ -643,7 +670,7 @@ const useFlowStore = create<FlowStore>((set, get) => {
             nodes: nextNodes,
             edges: nextEdges,
             globalDemand: firstModel.globalDemand,
-            derivedResults: calculateFlowDAG(firstModel),
+            derivedResults: simulateWithRework(firstModel),
             validationResult: validateGraph(nextNodes, nextEdges),
             savedSnapshots: snapshots,
             persistedScenarioIds: new Set(dbScenarios.map(s => s.id)),
@@ -669,6 +696,10 @@ const useFlowStore = create<FlowStore>((set, get) => {
               utilization: Object.fromEntries(
                 Object.entries(derivedResults.nodeResults).map(([id, r]) => [id, r.utilization])
               ),
+              rework_cycles: derivedResults.rework?.totalReworkCycles ?? 0,
+              rework_rate: derivedResults.rework?.reworkRate ?? 0,
+              convergence_iterations: derivedResults.rework?.convergenceIterations ?? 1,
+              converged: derivedResults.rework?.converged ?? true,
             }
           : null;
         const isNewScenario = !get().persistedScenarioIds.has(activeScenarioId);
@@ -736,10 +767,14 @@ const useFlowStore = create<FlowStore>((set, get) => {
         edges: nextEdges,
         globalDemand: model.globalDemand,
         selectedElement: null,
-        derivedResults: calculateFlowDAG(model),
+        derivedResults: simulateWithRework(model),
         validationResult: validateGraph(nextNodes, nextEdges),
       });
       syncActiveScenario();
+    },
+
+    dismissReworkCleanupWarning: () => {
+      set({ reworkCleanupWarning: null });
     },
 
     hasUnsavedEdits: () => {

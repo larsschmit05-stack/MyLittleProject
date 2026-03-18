@@ -1,7 +1,7 @@
 'use client';
 
 import 'reactflow/dist/style.css';
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useMemo } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -10,16 +10,19 @@ import ReactFlow, {
   ReactFlowProvider,
   Connection,
   useReactFlow,
+  useViewport,
 } from 'reactflow';
 import SourceNode from './nodes/SourceNode';
 import ProcessNode from './nodes/ProcessNode';
 import SinkNode from './nodes/SinkNode';
 import ScrapAwareEdge from './edges/ScrapAwareEdge';
+import ReworkArrow from './edges/ReworkArrow';
 import ValidationModal from './ValidationModal';
 import { isValidConnection as checkConnection } from '../../lib/flow/validation';
 import useFlowStore from '../../store/useFlowStore';
 import { useCanvasInteractions, SNAP_GRID } from './useCanvasInteractions';
 import { useTouchpadNavigation } from './useTouchpadNavigation';
+import type { ProcessNodeData } from '../../types/flow';
 
 const nodeTypes = {
   source: SourceNode,
@@ -38,6 +41,8 @@ function FlowCanvas() {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
   const onConnect = useFlowStore((s) => s.onConnect);
   const graphStatus = useFlowStore((s) => s.validationResult);
+  const reworkCleanupWarning = useFlowStore((s) => s.reworkCleanupWarning);
+  const dismissReworkCleanupWarning = useFlowStore((s) => s.dismissReworkCleanupWarning);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const reactFlowInstance = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -66,6 +71,62 @@ function FlowCanvas() {
     reactFlowInstance.fitView({ nodes: [{ id: nodeId }], maxZoom: 1.5, duration: 300 });
     setShowValidationModal(false);
   }, [nodes, reactFlowInstance]);
+
+  const derivedResults = useFlowStore((s) => s.derivedResults);
+  const { x: vpX, y: vpY, zoom } = useViewport();
+
+  // Compute rework arrows from node data
+  const reworkArrows = useMemo(() => {
+    const arrows: Array<{
+      id: string;
+      sourceX: number;
+      sourceY: number;
+      targetX: number;
+      targetY: number;
+      percentage: number;
+      tooltip: string;
+    }> = [];
+
+    for (const node of nodes) {
+      if (node.type !== 'process') continue;
+      const data = node.data as ProcessNodeData;
+      if (!data.reworkLoops?.length) continue;
+
+      // Node center (approximate: use position + half width/height)
+      const srcX = node.position.x + 64; // ~half of minWidth 128
+      const srcY = node.position.y;       // top of node
+
+      for (const loop of data.reworkLoops) {
+        const targetNode = nodes.find((n) => n.id === loop.targetNodeId);
+        if (!targetNode) continue;
+
+        const tgtX = targetNode.position.x + 64;
+        const tgtY = targetNode.position.y;
+
+        const targetName =
+          targetNode.type === 'process'
+            ? (targetNode.data as ProcessNodeData).name
+            : (targetNode.data as { label?: string }).label ?? loop.targetNodeId;
+
+        const reworkAmount = derivedResults?.rework?.reworkSources?.find(
+          (rs) => rs.nodeId === node.id && rs.targetNodeId === loop.targetNodeId
+        )?.reworkAmount;
+
+        const amountStr = reworkAmount !== undefined ? ` (${reworkAmount.toFixed(1)} units/hr)` : '';
+
+        arrows.push({
+          id: `rework-${node.id}-${loop.targetNodeId}`,
+          sourceX: srcX,
+          sourceY: srcY,
+          targetX: tgtX,
+          targetY: tgtY,
+          percentage: loop.percentage,
+          tooltip: `${loop.percentage}% of ${data.name} reworks to ${targetName}${amountStr}`,
+        });
+      }
+    }
+    return arrows;
+  }, [nodes, derivedResults]);
 
   const detailCount = graphStatus?.errorDetails?.length ?? 0;
   const hasErrors = graphStatus && !graphStatus.isValid && detailCount > 0;
@@ -111,6 +172,30 @@ function FlowCanvas() {
           color="#e5e7eb"
         />
         <Controls />
+        {/* Rework arrows overlay — rendered in viewport transform space */}
+        {reworkArrows.length > 0 && (
+          <svg
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              overflow: 'visible',
+              zIndex: 5,
+            }}
+          >
+            <g
+              transform={`translate(${vpX},${vpY}) scale(${zoom})`}
+              style={{ pointerEvents: 'auto' }}
+            >
+              {reworkArrows.map((arrow) => (
+                <ReworkArrow key={arrow.id} {...arrow} />
+              ))}
+            </g>
+          </svg>
+        )}
         <Panel position="bottom-center">
           <div
             role={hasErrors ? 'button' : undefined}
@@ -155,6 +240,48 @@ function FlowCanvas() {
           onClose={() => setShowValidationModal(false)}
           onGoToNode={handleGoToNode}
         />
+      )}
+      {reworkCleanupWarning && (
+        <div
+          role="alert"
+          style={{
+            position: 'absolute',
+            top: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 50,
+            background: 'rgba(245, 158, 11, 0.95)',
+            color: 'white',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            maxWidth: '500px',
+          }}
+        >
+          <span>{reworkCleanupWarning}</span>
+          <button
+            onClick={dismissReworkCleanupWarning}
+            aria-label="Dismiss warning"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 700,
+              padding: '0 4px',
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

@@ -16,6 +16,10 @@ export interface ScenarioResults {
   throughput: number;
   bottleneck_node_ids: string[];
   utilization: Record<string, number>;
+  rework_cycles?: number;
+  rework_rate?: number;
+  convergence_iterations?: number;
+  converged?: boolean;
 }
 
 /** For INSERT — DB generates id + timestamps */
