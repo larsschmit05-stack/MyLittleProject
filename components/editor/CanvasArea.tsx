@@ -1,7 +1,7 @@
 'use client';
 
 import 'reactflow/dist/style.css';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -19,6 +19,7 @@ import ValidationModal from './ValidationModal';
 import { isValidConnection as checkConnection } from '../../lib/flow/validation';
 import useFlowStore from '../../store/useFlowStore';
 import { useCanvasInteractions, SNAP_GRID } from './useCanvasInteractions';
+import { useTouchpadNavigation } from './useTouchpadNavigation';
 
 const nodeTypes = {
   source: SourceNode,
@@ -39,6 +40,10 @@ function FlowCanvas() {
   const graphStatus = useFlowStore((s) => s.validationResult);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const reactFlowInstance = useReactFlow();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Enable touchpad navigation
+  useTouchpadNavigation(containerRef);
 
   const {
     onNodeClick,
@@ -74,7 +79,7 @@ function FlowCanvas() {
         : graphStatus?.errors[0] ?? 'Drag nodes onto the canvas to begin';
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -95,6 +100,9 @@ function FlowCanvas() {
         autoPanOnNodeDrag={false}
         autoPanOnConnect={false}
         isValidConnection={handleIsValidConnection}
+        panOnDrag={true}
+        panOnScroll={true}
+        selectionOnDrag={false}
       >
         <Background
           variant={BackgroundVariant.Dots}

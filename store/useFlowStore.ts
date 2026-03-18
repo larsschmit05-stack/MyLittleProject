@@ -11,6 +11,9 @@ import {
 import { isValidConnection as checkConnection, validateGraph, ValidationResult } from '../lib/flow/validation';
 import { calculateFlowDAG } from '../utils/calculations';
 import { insertModel, updateModel, fetchModel } from '../lib/persistence';
+import { getScenarios as fetchScenariosFromDb, createScenario, updateScenario as updateScenarioInDb } from '../lib/db/scenarios';
+import type { ScenarioResults } from '../types/scenario';
+import { classifyBottlenecks } from '../components/editor/nodes/processNodeStatus';
 import type {
   FlowNode,
   FlowNodeType,
@@ -37,6 +40,10 @@ interface FlowState {
   savedModelName: string;
   isSaving: boolean;
   saveError: string | null;
+  /** Per-scenario snapshots keyed by scenario ID. Present = persisted in DB. */
+  savedSnapshots: Record<string, SerializedModel>;
+  isSavingScenario: boolean;
+  scenarioSaveError: string | null;
 }
 
 interface FlowActions {
@@ -58,6 +65,10 @@ interface FlowActions {
   updateSavedModel: () => Promise<void>;
   loadModel: (id: string) => Promise<void>;
   resetStore: () => void;
+  loadScenariosFromDb: (modelId: string) => Promise<void>;
+  saveScenarioToDb: () => Promise<void>;
+  resetToSaved: () => void;
+  hasUnsavedEdits: () => boolean;
 }
 
 type FlowStore = FlowState & FlowActions;
@@ -149,6 +160,9 @@ const useFlowStore = create<FlowStore>((set, get) => {
     savedModelName: '',
     isSaving: false,
     saveError: null,
+    savedSnapshots: {},
+    isSavingScenario: false,
+    scenarioSaveError: null,
 
     onNodesChange: (changes) => {
       const currentState = get();
@@ -364,8 +378,18 @@ const useFlowStore = create<FlowStore>((set, get) => {
       set({ isSaving: true, saveError: null });
       try {
         const model = get().getSerializedModel();
-        const id = await insertModel(name, model);
-        set({ savedModelId: id, savedModelName: name, isSaving: false });
+        const modelId = await insertModel(name, model);
+        // Create baseline scenario row for the new model
+        const scenarioId = await createScenario({ model_id: modelId, name: 'Baseline', data: model });
+        const snapshot = JSON.parse(JSON.stringify(model));
+        set({
+          savedModelId: modelId,
+          savedModelName: name,
+          isSaving: false,
+          scenarios: [{ id: scenarioId, name: 'Baseline', model }],
+          activeScenarioId: scenarioId,
+          savedSnapshots: { [scenarioId]: snapshot },
+        });
       } catch (err) {
         set({ isSaving: false, saveError: (err as Error).message });
       }
@@ -398,6 +422,9 @@ const useFlowStore = create<FlowStore>((set, get) => {
         savedModelName: '',
         isSaving: false,
         saveError: null,
+        savedSnapshots: {},
+        isSavingScenario: false,
+        scenarioSaveError: null,
       });
     },
 
@@ -416,6 +443,9 @@ const useFlowStore = create<FlowStore>((set, get) => {
         activeScenarioId: BASELINE_ID,
         isSaving: true,
         saveError: null,
+        savedSnapshots: {},
+        isSavingScenario: false,
+        scenarioSaveError: null,
       });
       try {
         const row = await fetchModel(id);
@@ -434,10 +464,125 @@ const useFlowStore = create<FlowStore>((set, get) => {
           isSaving: false,
           scenarios: [{ id: BASELINE_ID, name: 'Baseline', model }],
           activeScenarioId: BASELINE_ID,
+          savedSnapshots: { [BASELINE_ID]: JSON.parse(JSON.stringify(model)) },
         });
+        await get().loadScenariosFromDb(id);
       } catch (err) {
         set({ isSaving: false, saveError: (err as Error).message });
       }
+    },
+
+    loadScenariosFromDb: async (modelId) => {
+      try {
+        const dbScenarios = await fetchScenariosFromDb(modelId);
+        if (dbScenarios.length === 0) {
+          // Legacy model with no saved scenarios — create Baseline from current state
+          const model = get().getSerializedModel();
+          const newId = await createScenario({ model_id: modelId, name: 'Baseline', data: model });
+          set({
+            scenarios: [{ id: newId, name: 'Baseline', model }],
+            activeScenarioId: newId,
+            savedSnapshots: { [newId]: JSON.parse(JSON.stringify(model)) },
+          });
+        } else {
+          const scenarios: Scenario[] = dbScenarios.map((s) => ({
+            id: s.id,
+            name: s.name,
+            model: s.data,
+          }));
+          // Build per-scenario saved snapshots from DB state
+          const snapshots: Record<string, SerializedModel> = {};
+          for (const s of dbScenarios) {
+            snapshots[s.id] = JSON.parse(JSON.stringify(s.data));
+          }
+          const firstModel: SerializedModel = JSON.parse(JSON.stringify(scenarios[0].model));
+          const nextNodes = firstModel.nodes.map((n) => ({ ...n })) as FlowNode[];
+          const nextEdges = firstModel.edges.map((e) => ({ ...e }));
+          // Results from DB are intentionally not loaded into derivedResults —
+          // we recompute from data so the active simulation is always fresh.
+          // Stored results will be used by the comparison view (Phase 8-10).
+          set({
+            scenarios,
+            activeScenarioId: scenarios[0].id,
+            nodes: nextNodes,
+            edges: nextEdges,
+            globalDemand: firstModel.globalDemand,
+            derivedResults: calculateFlowDAG(firstModel),
+            validationResult: validateGraph(nextNodes, nextEdges),
+            savedSnapshots: snapshots,
+          });
+        }
+      } catch {
+        // Scenario loading is non-fatal — the model is already on canvas
+      }
+    },
+
+    saveScenarioToDb: async () => {
+      const { activeScenarioId, savedModelId, savedSnapshots, nodes } = get();
+      if (!savedModelId) return;
+      set({ isSavingScenario: true, scenarioSaveError: null });
+      try {
+        const model = get().getSerializedModel();
+        const { derivedResults } = get();
+        // Use classifyBottlenecks for correct multi-bottleneck detection
+        const results: ScenarioResults | null = derivedResults
+          ? {
+              throughput: derivedResults.systemThroughput,
+              bottleneck_node_ids: classifyBottlenecks(nodes, derivedResults.nodeResults).bottleneckNodeIds,
+              utilization: Object.fromEntries(
+                Object.entries(derivedResults.nodeResults).map(([id, r]) => [id, r.utilization])
+              ),
+            }
+          : null;
+        const isNewScenario = !(activeScenarioId in savedSnapshots);
+        if (isNewScenario) {
+          // Scenario has no DB row yet — INSERT
+          const newId = await createScenario({ model_id: savedModelId, name: get().scenarios.find(s => s.id === activeScenarioId)?.name ?? 'Untitled', data: model, results });
+          // Update the in-memory scenario to use the DB-generated ID
+          const snapshot = JSON.parse(JSON.stringify(model));
+          set({
+            scenarios: get().scenarios.map(s => s.id === activeScenarioId ? { ...s, id: newId } : s),
+            activeScenarioId: newId,
+            savedSnapshots: { ...get().savedSnapshots, [newId]: snapshot },
+            isSavingScenario: false,
+          });
+        } else {
+          // Scenario exists in DB — UPDATE
+          await updateScenarioInDb(activeScenarioId, { data: model, results });
+          const snapshot = JSON.parse(JSON.stringify(model));
+          set({
+            isSavingScenario: false,
+            savedSnapshots: { ...get().savedSnapshots, [activeScenarioId]: snapshot },
+          });
+        }
+      } catch (err) {
+        set({ isSavingScenario: false, scenarioSaveError: (err as Error).message });
+      }
+    },
+
+    resetToSaved: () => {
+      const { savedSnapshots, activeScenarioId } = get();
+      const snapshot = savedSnapshots[activeScenarioId];
+      if (!snapshot) return;
+      const model: SerializedModel = JSON.parse(JSON.stringify(snapshot));
+      const nextNodes = model.nodes.map((n) => ({ ...n })) as FlowNode[];
+      const nextEdges = model.edges.map((e) => ({ ...e }));
+      set({
+        nodes: nextNodes,
+        edges: nextEdges,
+        globalDemand: model.globalDemand,
+        selectedElement: null,
+        derivedResults: calculateFlowDAG(model),
+        validationResult: validateGraph(nextNodes, nextEdges),
+      });
+      syncActiveScenario();
+    },
+
+    hasUnsavedEdits: () => {
+      const { savedSnapshots, activeScenarioId } = get();
+      const snapshot = savedSnapshots[activeScenarioId];
+      if (!snapshot) return true; // Never saved → always dirty
+      return JSON.stringify(get().getSerializedModel()) !== JSON.stringify(snapshot);
     },
   };
 });
