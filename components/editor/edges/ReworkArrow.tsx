@@ -33,12 +33,10 @@ export default function ReworkArrow({
   const labelX = (sourceX + targetX) / 2;
   const labelY = upY - 12;
   const labelGap = 22; // Gap around label to skip in the dashed line
-  const badgeY = targetY - 20; // Badge position ("Rework" text above node)
-  const badgeGap = 16; // Gap around badge to skip
 
-  // Split paths: left of label, around badge, and right of label
+  // Split paths: left of label and right of label
   const leftPath = `M ${sourceX} ${sourceY} L ${sourceX} ${upY} L ${labelX - labelGap} ${upY}`;
-  const rightPath = `M ${labelX + labelGap} ${upY} L ${targetX} ${upY} L ${targetX} ${badgeY - badgeGap} M ${targetX} ${badgeY + badgeGap} L ${targetX} ${targetY}`;
+  const rightPath = `M ${labelX + labelGap} ${upY} L ${targetX} ${upY} L ${targetX} ${targetY}`;
 
   return (
     <g>
@@ -86,6 +84,17 @@ export default function ReworkArrow({
         transform={`translate(${targetX},${targetY - 8}) rotate(90)`}
         pointerEvents="none"
       />
+      {/* Cover behind "Rework" badge to hide dashed line */}
+      <rect
+        x={targetX - 35}
+        y={targetY - 28}
+        width={70}
+        height={18}
+        fill="white"
+        opacity={1}
+        pointerEvents="none"
+      />
+
       {/* Label */}
       <g pointerEvents="none">
         <rect
