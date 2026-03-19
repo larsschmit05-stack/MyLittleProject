@@ -69,6 +69,17 @@ export default function ReworkArrow({
       />
       {/* Label */}
       <g pointerEvents="none">
+        {/* Fully opaque background to hide the dashed line */}
+        <rect
+          x={labelX - 18}
+          y={labelY - 10}
+          width={36}
+          height={20}
+          rx={3}
+          fill="white"
+          opacity={1}
+        />
+        {/* Styled label rect */}
         <rect
           x={labelX - 16}
           y={labelY - 8}
