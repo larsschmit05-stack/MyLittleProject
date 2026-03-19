@@ -32,6 +32,11 @@ export default function ReworkArrow({
   // Label position at the midpoint of the horizontal segment
   const labelX = (sourceX + targetX) / 2;
   const labelY = upY - 12;
+  const labelGap = 22; // Gap around label to skip in the dashed line
+
+  // Split paths: left of label and right of label
+  const leftPath = `M ${sourceX} ${sourceY} L ${sourceX} ${upY} L ${labelX - labelGap} ${upY}`;
+  const rightPath = `M ${labelX + labelGap} ${upY} L ${targetX} ${upY} L ${targetX} ${targetY}`;
 
   return (
     <g>
@@ -47,9 +52,21 @@ export default function ReworkArrow({
         onMouseLeave={() => setHovered(false)}
         style={{ cursor: 'default' }}
       />
-      {/* Visible dashed arrow */}
+      {/* Visible dashed arrow - left segment */}
       <path
-        d={path}
+        d={leftPath}
+        fill="none"
+        stroke="#F97316"
+        strokeWidth={hovered ? 2.5 : 1.5}
+        strokeDasharray="6 3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.85}
+        pointerEvents="none"
+      />
+      {/* Visible dashed arrow - right segment */}
+      <path
+        d={rightPath}
         fill="none"
         stroke="#F97316"
         strokeWidth={hovered ? 2.5 : 1.5}
@@ -69,17 +86,6 @@ export default function ReworkArrow({
       />
       {/* Label */}
       <g pointerEvents="none">
-        {/* Fully opaque background to hide the dashed line */}
-        <rect
-          x={labelX - 18}
-          y={labelY - 10}
-          width={36}
-          height={20}
-          rx={3}
-          fill="white"
-          opacity={1}
-        />
-        {/* Styled label rect */}
         <rect
           x={labelX - 16}
           y={labelY - 8}
