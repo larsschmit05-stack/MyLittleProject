@@ -18,22 +18,25 @@ export async function createInvite(
 ): Promise<{ token: string; id: string }> {
   const normalizedEmail = inviteeEmail.toLowerCase();
 
-  // Check for existing pending invite for this email+model
-  // Allow re-invite if previous was declined/revoked/expired
-  const { data: existing } = await client
+  // Check for existing invite for this email+model (get most recent one)
+  // Allow re-invite only if previous invite was declined/revoked/expired
+  const { data: existingInvites } = await client
     .from('invite_tokens')
-    .select('id, status')
+    .select('id, status, created_at')
     .eq('model_id', modelId)
     .eq('invited_email', normalizedEmail)
-    .in('status', ['pending', 'accepted'])
+    .order('created_at', { ascending: false })
     .limit(1);
 
-  if (existing && existing.length > 0) {
-    const status = existing[0].status;
+  if (existingInvites && existingInvites.length > 0) {
+    const status = existingInvites[0].status;
     if (status === 'accepted') {
       throw new Error('User already has access to this model');
     }
-    throw new Error('User already has a pending invite');
+    if (status === 'pending') {
+      throw new Error('User already has a pending invite');
+    }
+    // If status is 'revoked', 'declined', or 'expired', allow re-inviting
   }
 
   // Check model_access for an accepted record (covers case where invite was accepted)
@@ -332,18 +335,13 @@ export async function revokeAccess(
     .eq('user_id', targetUserId);
   if (error) throw new Error(error.message);
 
-  // Also revoke any pending/accepted invite_tokens for this user's email
-  // Get user email from auth.users to ensure we find it even if model_access filters it out
-  const { data: { user }, error: authError } = await client.auth.admin.getUserById(targetUserId);
-
-  if (!authError && user?.email) {
-    await client
-      .from('invite_tokens')
-      .update({ status: 'revoked' })
-      .eq('model_id', modelId)
-      .eq('invited_email', user.email.toLowerCase())
-      .in('status', ['pending', 'accepted']);
-  }
+  // Revoke all pending/accepted invite tokens for this model
+  // These should already have been revoked by email in most cases, but this ensures cleanup
+  await client
+    .from('invite_tokens')
+    .update({ status: 'revoked' })
+    .eq('model_id', modelId)
+    .in('status', ['pending', 'accepted']);
 }
 
 export async function cancelInviteByEmail(
