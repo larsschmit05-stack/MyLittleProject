@@ -77,11 +77,6 @@ function canReach(from: string, target: string, edges: Edge[]): boolean {
   return false;
 }
 
-/** Check if ancestorId is an upstream node that can reach nodeId in the flow. */
-export function isUpstreamAncestor(ancestorId: string, nodeId: string, edges: Edge[]): boolean {
-  return canReach(ancestorId, nodeId, edges);
-}
-
 /** Returns IDs of nodes participating in cycles, or empty array if acyclic. */
 function findCycleNodeIds(nodes: Node[], realEdges: Edge[]): string[] {
   const adj = new Map<string, string[]>();

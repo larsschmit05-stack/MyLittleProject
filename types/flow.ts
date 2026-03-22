@@ -14,11 +14,6 @@ export interface SinkNodeData {
   label: string;
 }
 
-export interface ReworkLoop {
-  targetNodeId: string;
-  percentage: number;
-}
-
 export interface ProcessNodeData {
   name: string;
   throughputRate: number;
@@ -28,7 +23,6 @@ export interface ProcessNodeData {
   conversionRatio: number;
   bomRatios?: Record<string, number>;
   outputMaterial?: string;
-  reworkLoops?: ReworkLoop[];
 }
 
 export type FlowSourceNode = Node<SourceNodeData, 'source'>;
