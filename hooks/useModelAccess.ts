@@ -24,7 +24,7 @@ export function useModelAccess(modelId: string | null): UseModelAccessReturn {
     }
   }, [modelId, currentModelId]); // Don't depend on fetchUserAccess (function reference changes constantly)
 
-  const role = currentUserRole;
+  const role = modelId === null ? 'owner' : currentUserRole;
 
   return {
     role,
