@@ -229,7 +229,7 @@ export function topologicalSort(
  * Full DAG calculation engine supporting merges, splits, fork-joins and V1 linear chains.
  * Replaces calculateFlow() as the primary engine; signatures are identical.
  */
-export function calculateFlowDAG(model: SerializedModel, injectedDemand?: Record<string, number>): FlowResult {
+export function calculateFlowDAG(model: SerializedModel): FlowResult {
   if (model.nodes.length === 0) return EMPTY_RESULT;
 
   const order = topologicalSort(model.nodes, model.edges);
@@ -316,12 +316,6 @@ export function calculateFlowDAG(model: SerializedModel, injectedDemand?: Record
       // Split node: take the most-constrained downstream path
       const candidates = splitCandidates.get(nodeId) ?? [];
       rt = candidates.length > 0 ? Math.max(...candidates) : 0;
-      requiredThroughput.set(nodeId, rt);
-    }
-
-    // Inject additional demand from rework loops
-    if (injectedDemand?.[nodeId]) {
-      rt += injectedDemand[nodeId];
       requiredThroughput.set(nodeId, rt);
     }
 

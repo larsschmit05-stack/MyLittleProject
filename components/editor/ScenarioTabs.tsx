@@ -15,6 +15,7 @@ interface ScenarioTabsProps {
   onExport: () => void;
   isExporting?: boolean;
   isMobile: boolean;
+  readOnly?: boolean;
 }
 
 const containerStyle: CSSProperties = {
@@ -84,6 +85,7 @@ export default function ScenarioTabs({
   onExport,
   isExporting = false,
   isMobile,
+  readOnly = false,
 }: ScenarioTabsProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
@@ -109,11 +111,11 @@ export default function ScenarioTabs({
               onClick={() => {
                 if (!isActive) onSelectScenario(s.id);
               }}
-              onContextMenu={(e) => {
+              onContextMenu={readOnly ? undefined : (e) => {
                 e.preventDefault();
                 onContextMenu(s.id, { x: e.clientX, y: e.clientY });
               }}
-              onTouchStart={(e) => {
+              onTouchStart={readOnly ? undefined : (e) => {
                 longPressFired.current = false;
                 const touch = e.touches[0];
                 const pos = { x: touch.clientX, y: touch.clientY };
@@ -122,8 +124,8 @@ export default function ScenarioTabs({
                   onContextMenu(s.id, pos);
                 }, 500);
               }}
-              onTouchMove={() => clearLongPress()}
-              onTouchEnd={(e) => {
+              onTouchMove={readOnly ? undefined : () => clearLongPress()}
+              onTouchEnd={readOnly ? undefined : (e) => {
                 clearLongPress();
                 if (longPressFired.current) {
                   e.preventDefault();
@@ -134,13 +136,15 @@ export default function ScenarioTabs({
             </button>
           );
         })}
-        <button
-          style={newBtnStyle}
-          onClick={onNewScenario}
-          aria-label="Create new scenario"
-        >
-          {isMobile ? '+ New' : '+ New Scenario'}
-        </button>
+        {!readOnly && (
+          <button
+            style={newBtnStyle}
+            onClick={onNewScenario}
+            aria-label="Create new scenario"
+          >
+            {isMobile ? '+ New' : '+ New Scenario'}
+          </button>
+        )}
         <button
           style={{
             ...compareBtnStyle,

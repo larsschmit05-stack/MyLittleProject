@@ -6,8 +6,10 @@ import type { SavedModelRow } from '../../lib/persistence';
 import useFlowStore from '../../store/useFlowStore';
 import useAuthStore from '../../store/useAuthStore';
 
-type ModelListItem = Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>;
-type SortKey = 'name' | 'created_at' | 'updated_at';
+type ModelListItem = Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'> & {
+  role: 'owner' | 'edit' | 'view';
+};
+type SortKey = 'name' | 'created_at' | 'updated_at' | 'role';
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
@@ -65,6 +67,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const resetStore = useFlowStore((s) => s.resetStore);
   const logout = useAuthStore((s) => s.logout);
+  const currentUser = useAuthStore((s) => s.user);
 
   async function handleLogout() {
     await logout();
@@ -83,8 +86,27 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const rows = await listModels();
-      setModels(rows);
+      // Fetch owned and shared models in parallel
+      const [ownedRows, sharedRes] = await Promise.all([
+        listModels(),
+        fetch('/api/models/shared').then((r) => r.json()).catch(() => ({ models: [] })),
+      ]);
+      // listModels() may return shared models via RLS, so dedupe by ID
+      const sharedModels: ModelListItem[] = (sharedRes.models ?? []).map(
+        (m: { id: string; name: string; created_at: string; updated_at: string; role: string }) => ({
+          id: m.id,
+          name: m.name,
+          created_at: m.created_at,
+          updated_at: m.updated_at,
+          role: m.role as 'edit' | 'view',
+        })
+      );
+      const sharedIds = new Set(sharedModels.map((m) => m.id));
+      // Models from listModels that are NOT in the shared set are owned
+      const owned: ModelListItem[] = ownedRows
+        .filter((r) => !sharedIds.has(r.id))
+        .map((r) => ({ ...r, role: 'owner' as const }));
+      setModels([...owned, ...sharedModels]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -137,6 +159,21 @@ export default function DashboardPage() {
       await load();
     } catch (err) {
       alert('Failed to duplicate: ' + (err as Error).message);
+    }
+  }
+
+  async function handleLeave(modelId: string, modelName: string) {
+    if (!currentUser?.id) return;
+    if (!confirm(`Leave "${modelName}"? You will lose access to this model.`)) return;
+    try {
+      const res = await fetch(`/api/models/${modelId}/access/${currentUser.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? 'Failed to leave model');
+      }
+      setModels((prev) => prev.filter((m) => m.id !== modelId));
+    } catch (err) {
+      alert('Failed to leave: ' + (err as Error).message);
     }
   }
 
@@ -216,6 +253,9 @@ export default function DashboardPage() {
                   <th style={thStyle} onClick={() => handleSort('name')}>
                     Name{sortIndicator('name')}
                   </th>
+                  <th style={{ ...thStyle, width: '80px' }} onClick={() => handleSort('role')}>
+                    Role{sortIndicator('role')}
+                  </th>
                   <th style={{ ...thStyle, width: '120px' }} onClick={() => handleSort('created_at')}>
                     Created{sortIndicator('created_at')}
                   </th>
@@ -273,6 +313,23 @@ export default function DashboardPage() {
                         </span>
                       )}
                     </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        display: 'inline-block',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        textTransform: 'capitalize',
+                        ...(model.role === 'owner'
+                          ? { background: 'rgba(59, 130, 246, 0.1)', color: 'var(--color-action)' }
+                          : model.role === 'edit'
+                            ? { background: 'rgba(34, 197, 94, 0.1)', color: '#16a34a' }
+                            : { background: 'rgba(128, 128, 128, 0.1)', color: 'var(--color-text-secondary)' }),
+                      }}>
+                        {model.role === 'owner' ? 'Owner' : model.role === 'edit' ? 'Edit' : 'View'}
+                      </span>
+                    </td>
                     <td style={{ ...tdStyle, fontSize: '12px', color: 'var(--color-text-secondary)' }}>
                       {fmtDate(model.created_at)}
                     </td>
@@ -281,15 +338,29 @@ export default function DashboardPage() {
                     </td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={() => startRename(model)} style={secondaryBtn}>
-                          Rename
-                        </button>
-                        <button onClick={() => handleDuplicate(model.id)} style={secondaryBtn}>
-                          Duplicate
-                        </button>
-                        <button onClick={() => handleDelete(model.id, model.name)} style={dangerBtn}>
-                          Delete
-                        </button>
+                        {model.role === 'owner' && (
+                          <>
+                            <button onClick={() => startRename(model)} style={secondaryBtn}>
+                              Rename
+                            </button>
+                            <button onClick={() => handleDuplicate(model.id)} style={secondaryBtn}>
+                              Duplicate
+                            </button>
+                            <button onClick={() => handleDelete(model.id, model.name)} style={dangerBtn}>
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {model.role !== 'owner' && (
+                          <>
+                            <button onClick={() => handleDuplicate(model.id)} style={secondaryBtn}>
+                              Duplicate
+                            </button>
+                            <button onClick={() => handleLeave(model.id, model.name)} style={dangerBtn}>
+                              Leave
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

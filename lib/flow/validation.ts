@@ -1,5 +1,5 @@
 import type { Connection, Edge, Node } from 'reactflow';
-import type { EdgeData, ProcessNodeData, ReworkLoop } from '../../types/flow';
+import type { EdgeData, ProcessNodeData } from '../../types/flow';
 
 function getNodeDisplayName(node: Node): string {
   return (node.data as ProcessNodeData)?.name
@@ -16,8 +16,7 @@ export type ValidationErrorCategory =
   | 'invalid_scrap_target'
   | 'missing_output_material'
   | 'mixed_sink_inputs'
-  | 'invalid_rework_target'
-  | 'invalid_rework_percentage';
+;
 
 export interface ValidationError {
   message: string;
@@ -72,25 +71,6 @@ function canReach(from: string, target: string, edges: Edge[]): boolean {
     if (visited.has(current)) continue;
     visited.add(current);
     for (const edge of edges) {
-      if (edge.source === current) queue.push(edge.target);
-    }
-  }
-  return false;
-}
-
-/**
- * Returns true if `candidateId` is an upstream ancestor of `sourceId` in the real-edge graph.
- * i.e., there is a directed path from candidateId to sourceId following real edges forward.
- */
-export function isUpstreamAncestor(candidateId: string, sourceId: string, realEdges: Edge[]): boolean {
-  const visited = new Set<string>();
-  const queue = [candidateId];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (current === sourceId) return true;
-    if (visited.has(current)) continue;
-    visited.add(current);
-    for (const edge of realEdges) {
       if (edge.source === current) queue.push(edge.target);
     }
   }
@@ -337,101 +317,6 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
     .filter(m => m !== '');
   if (new Set(sinkMaterials).size >= 2) {
     addError('Sink accepts only one product. Mark unwanted inputs as scrap or remove them.', 'mixed_sink_inputs', [sinkId]);
-  }
-
-  // Rework loop validation
-  const nodeIdSet = new Set(nodes.map(n => n.id));
-  for (const pNode of processNodes) {
-    const data = pNode.data as ProcessNodeData;
-    const loops: ReworkLoop[] = data?.reworkLoops ?? [];
-    if (loops.length === 0) continue;
-
-    const name = data?.name ?? pNode.id;
-    let reworkPctSum = 0;
-
-    for (const loop of loops) {
-      reworkPctSum += loop.percentage;
-
-      // Percentage must be in (0, 100]
-      if (loop.percentage <= 0 || loop.percentage > 100) {
-        addError(
-          `Rework loop on "${name}" has invalid percentage (${loop.percentage}%)`,
-          'invalid_rework_percentage',
-          [pNode.id],
-        );
-        continue;
-      }
-
-      // Target must exist
-      if (!nodeIdSet.has(loop.targetNodeId)) {
-        addError(
-          `Rework loop on "${name}" targets a non-existent node`,
-          'invalid_rework_target',
-          [pNode.id],
-        );
-        continue;
-      }
-
-      // Not self
-      if (loop.targetNodeId === pNode.id) {
-        addError(
-          `Rework loop on "${name}" cannot target itself`,
-          'invalid_rework_target',
-          [pNode.id],
-        );
-        continue;
-      }
-
-      // Target node must exist and be a process node (not source, not sink)
-      const targetNode = nodes.find(n => n.id === loop.targetNodeId);
-
-      if (!targetNode) {
-        addError(
-          `Rework loop on "${name}" targets a non-existent node`,
-          'invalid_rework_target',
-          [pNode.id],
-        );
-        continue;
-      }
-
-      if (targetNode.type === 'sink') {
-        addError(
-          `Rework loop on "${name}" cannot target the Sink`,
-          'invalid_rework_target',
-          [pNode.id, loop.targetNodeId],
-        );
-        continue;
-      }
-
-      if (targetNode.type !== 'process') {
-        const targetName = getNodeDisplayName(targetNode);
-        addError(
-          `Rework loop on "${name}" must target a Process node, not "${targetName}"`,
-          'invalid_rework_target',
-          [pNode.id, loop.targetNodeId],
-        );
-        continue;
-      }
-
-      // Must be upstream ancestor
-      if (!isUpstreamAncestor(loop.targetNodeId, pNode.id, realEdges)) {
-        const targetName = getNodeDisplayName(targetNode!);
-        addError(
-          `Rework loop on "${name}" targets "${targetName}" which is not an upstream ancestor`,
-          'invalid_rework_target',
-          [pNode.id, loop.targetNodeId],
-        );
-      }
-    }
-
-    // yield + sum(rework percentages) must be <= 100
-    if (data.yield + reworkPctSum > 100) {
-      addError(
-        `"${name}" yield (${data.yield}%) + rework (${reworkPctSum}%) exceeds 100%`,
-        'invalid_rework_percentage',
-        [pNode.id],
-      );
-    }
   }
 
   return { isValid: errors.length === 0, errors, categories, errorDetails };

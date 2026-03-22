@@ -62,13 +62,13 @@ export async function fetchModel(id: string): Promise<SavedModelRow> {
   return data as SavedModelRow;
 }
 
-export async function listModels(): Promise<Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>[]> {
+export async function listModels(): Promise<Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at' | 'user_id'>[]> {
   const { data, error } = await getSupabaseClient()
     .from('models')
-    .select('id, name, created_at, updated_at')
+    .select('id, name, created_at, updated_at, user_id')
     .order('updated_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return data as Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at'>[];
+  return data as Pick<SavedModelRow, 'id' | 'name' | 'created_at' | 'updated_at' | 'user_id'>[];
 }
 
 export async function renameModel(id: string, name: string): Promise<void> {

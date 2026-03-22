@@ -78,6 +78,7 @@ If you don't recognize this invite, you can safely ignore this email.
     });
   } catch (error) {
     console.error('Failed to send invite email:', error);
+    // Log but don't throw - email sending failures shouldn't block the API
     throw error;
   }
 }

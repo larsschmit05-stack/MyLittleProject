@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { FlowNode, FlowResult, ProcessNodeData } from '../../types/flow';
 import type { ValidationResult } from '../../lib/flow/validation';
 import type { SelectedElement } from '../../types/flow';
@@ -48,7 +47,6 @@ export default function MetricsPanel({
   validationResult,
   selectedElement,
 }: MetricsPanelProps) {
-  const [reworkExpanded, setReworkExpanded] = useState(false);
   const processNodes = nodes.filter((n) => n.type === 'process');
 
   const isEmpty =
@@ -105,67 +103,6 @@ export default function MetricsPanel({
         <span style={resultLabelStyle}>System Throughput</span>
         <span style={resultValueStyle}>{fmt(derivedResults.systemThroughput)}</span>
       </div>
-
-      {/* Rework metrics */}
-      {derivedResults.rework && derivedResults.rework.totalReworkCycles > 0 && (
-        <>
-          <div style={resultRowStyle}>
-            <span style={resultLabelStyle}>Rework Cycles</span>
-            <span style={{ ...resultValueStyle, color: '#F97316' }}>
-              {fmt(derivedResults.rework.totalReworkCycles)} ({fmtPct(derivedResults.rework.reworkRate)})
-            </span>
-          </div>
-
-          {!derivedResults.rework.converged && (
-            <div style={{
-              fontSize: '12px',
-              color: 'var(--color-warning)',
-              marginBottom: '8px',
-              padding: '6px 8px',
-              background: 'rgba(245, 158, 11, 0.08)',
-              borderRadius: '4px',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
-            }}>
-              Rework simulation did not converge after {derivedResults.rework.convergenceIterations} iterations. Results are approximate.
-            </div>
-          )}
-
-          <div
-            style={{
-              fontSize: '11px',
-              color: 'var(--color-text-label)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              margin: '6px 0 4px 0',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-            onClick={() => setReworkExpanded(!reworkExpanded)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setReworkExpanded(!reworkExpanded); }}
-          >
-            <span style={{ fontSize: '9px' }}>{reworkExpanded ? '▼' : '▶'}</span>
-            Rework Impact
-          </div>
-
-          {reworkExpanded && (
-            <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
-              <div style={{ marginBottom: '2px' }}>
-                Iterations: {derivedResults.rework.convergenceIterations}
-              </div>
-              {derivedResults.rework.reworkSources.map((rs, i) => (
-                <div key={i} style={{ marginBottom: '2px', paddingLeft: '8px' }}>
-                  {rs.nodeName}: {rs.percentage}% → {rs.targetNodeName} ({fmt(rs.reworkAmount)} units/hr)
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
 
       {classification.status === 'balanced' ? (
         <div style={resultRowStyle}>
@@ -250,11 +187,6 @@ export default function MetricsPanel({
             </span>
             <span style={{ fontWeight: 500, color: 'var(--color-text-primary)' }}>
               {hasResult ? fmtPct(utilization!) : 'N/A'}
-              {nodeResult?.reworkDemand != null && nodeResult.reworkDemand > 0 && (
-                <span style={{ fontSize: '10px', color: '#F97316', marginLeft: '4px' }}>
-                  (+{fmt(nodeResult.reworkDemand)})
-                </span>
-              )}
             </span>
           </div>
         );

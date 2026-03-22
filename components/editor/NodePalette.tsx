@@ -11,9 +11,9 @@ function onDragStart(event: React.DragEvent, nodeType: string) {
   event.dataTransfer.effectAllowed = 'move';
 }
 
-export default function NodePalette() {
+export default function NodePalette({ disabled = false }: { disabled?: boolean }) {
   return (
-    <div style={{ padding: '16px' }}>
+    <div style={{ padding: '16px', ...(disabled ? { opacity: 0.4 } : {}) }}>
       <h2
         style={{
           fontSize: '12px',
@@ -26,6 +26,11 @@ export default function NodePalette() {
       >
         Node Palette
       </h2>
+      {disabled && (
+        <p style={{ fontSize: '11px', color: 'var(--color-text-secondary)', margin: '0 0 12px 0' }}>
+          View only
+        </p>
+      )}
       <div
         style={{
           display: 'flex',
@@ -36,8 +41,8 @@ export default function NodePalette() {
         {NODE_TYPES.map((item) => (
           <div
             key={item.type}
-            draggable
-            onDragStart={(event) => onDragStart(event, item.type)}
+            draggable={!disabled}
+            onDragStart={disabled ? undefined : (event) => onDragStart(event, item.type)}
             style={{
               padding: '8px 12px',
               backgroundColor: 'var(--color-bg-primary)',
@@ -45,7 +50,7 @@ export default function NodePalette() {
               borderRadius: '8px',
               fontSize: '14px',
               color: 'var(--color-text-primary)',
-              cursor: 'grab',
+              cursor: disabled ? 'not-allowed' : 'grab',
               userSelect: 'none',
             }}
           >

@@ -14,11 +14,6 @@ export interface SinkNodeData {
   label: string;
 }
 
-export interface ReworkLoop {
-  targetNodeId: string;  // must be an upstream ancestor in real-edge graph
-  percentage: number;    // 0-100, fraction of node output sent back as rework
-}
-
 export interface ProcessNodeData {
   name: string;
   throughputRate: number;
@@ -28,7 +23,6 @@ export interface ProcessNodeData {
   conversionRatio: number;
   bomRatios?: Record<string, number>;
   outputMaterial?: string;
-  reworkLoops?: ReworkLoop[];
 }
 
 export type FlowSourceNode = Node<SourceNodeData, 'source'>;
@@ -46,29 +40,12 @@ export interface NodeResult {
   requiredThroughput: number;
   effectiveCapacity: number;
   utilization: number;
-  reworkDemand?: number;  // extra demand from rework targeting this node (units/hr)
-}
-
-export interface ReworkSummary {
-  totalReworkCycles: number;       // total units/hr flowing through all rework loops
-  reworkRate: number;              // totalReworkCycles / systemThroughput
-  convergenceIterations: number;
-  converged: boolean;
-  reworkSources: Array<{
-    nodeId: string;
-    nodeName: string;
-    targetNodeId: string;
-    targetNodeName: string;
-    percentage: number;
-    reworkAmount: number;          // steady-state units/hr in this loop
-  }>;
 }
 
 export interface FlowResult {
   systemThroughput: number;
   bottleneckNodeId: string | null;
   nodeResults: Record<string, NodeResult>;
-  rework?: ReworkSummary;
 }
 
 export type DerivedResults = FlowResult | null;

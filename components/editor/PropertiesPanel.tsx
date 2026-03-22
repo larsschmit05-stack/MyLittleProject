@@ -13,7 +13,7 @@ import {
   panelDividerStyle,
 } from './styles';
 import MetricsPanel from './MetricsPanel';
-import ReworkSettings from './ReworkSettings';
+
 
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
@@ -335,7 +335,6 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
       ))}
 
       <BomSection nodeId={nodeId} data={data} />
-      <ReworkSettings nodeId={nodeId} data={data} />
 
       {incomingReal.length >= 1 && (
         <div style={{ ...panelFieldGroupStyle, marginTop: '16px' }}>
@@ -597,9 +596,10 @@ export function SelectionContent() {
 
 interface PropertiesPanelProps {
   isFloating?: boolean;
+  readOnly?: boolean;
 }
 
-export default function PropertiesPanel({ isFloating }: PropertiesPanelProps) {
+export default function PropertiesPanel({ isFloating, readOnly = false }: PropertiesPanelProps) {
   const nodes = useFlowStore((s) => s.nodes);
   const derivedResults = useFlowStore((s) => s.derivedResults);
   const validationResult = useFlowStore((s) => s.validationResult);
@@ -609,7 +609,18 @@ export default function PropertiesPanel({ isFloating }: PropertiesPanelProps) {
     (selectedElement.nodeType === 'process' || selectedElement.nodeType === 'source');
 
   return (
-    <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
+    <div style={{ padding: '16px', height: '100%', overflowY: 'auto', position: 'relative' }}>
+      {readOnly && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 1,
+            pointerEvents: 'all',
+            cursor: 'not-allowed',
+          }}
+        />
+      )}
       <GlobalDemandSection />
       <hr style={panelDividerStyle} />
       <MetricsPanel

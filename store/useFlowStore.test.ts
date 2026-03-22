@@ -195,17 +195,17 @@ describe('loadModel', () => {
 
   const loadedModel: SerializedModel = { nodes: [], edges: [], globalDemand: 200 };
 
-  it('clears canvas state before the fetch resolves', async () => {
+  it('preserves previous canvas while fetch is in-flight', async () => {
     // Arrange: fetch resolves after we can check intermediate state
     let resolveFetch!: (value: unknown) => void;
     mockFetchModel.mockReturnValue(new Promise((r) => { resolveFetch = r; }));
 
     const promise = useFlowStore.getState().loadModel('new-id');
 
-    // State should already be cleared (blank canvas, isSaving=true)
+    // Previous canvas should remain visible while loading
     const mid = useFlowStore.getState();
-    expect(mid.nodes).toHaveLength(0);
-    expect(mid.savedModelId).toBeNull();
+    expect(mid.nodes).toHaveLength(1);
+    expect(mid.savedModelId).toBe('old-id');
     expect(mid.isSaving).toBe(true);
 
     resolveFetch({ id: 'new-id', name: 'New', data: loadedModel });
@@ -224,15 +224,15 @@ describe('loadModel', () => {
     expect(s.isSaving).toBe(false);
   });
 
-  it('leaves canvas blank (not stale) when fetch fails', async () => {
+  it('preserves previous canvas when fetch fails', async () => {
     mockFetchModel.mockRejectedValue(new Error('network error'));
 
     await useFlowStore.getState().loadModel('bad-id');
 
     const s = useFlowStore.getState();
-    // Canvas must be blank — old model must NOT be present
-    expect(s.nodes).toHaveLength(0);
-    expect(s.savedModelId).toBeNull();
+    // Previous canvas should remain visible so user can recover
+    expect(s.nodes).toHaveLength(1);
+    expect(s.savedModelId).toBe('old-id');
     expect(s.isSaving).toBe(false);
     expect(s.saveError).toBe('network error');
   });

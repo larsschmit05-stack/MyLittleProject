@@ -5,6 +5,8 @@
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'invites@mylittleproject.app';
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'MyLittleProject';
 
 export interface BrevoEmailParams {
   to: { email: string; name?: string }[];
@@ -34,7 +36,7 @@ export async function sendBrevoEmail(params: BrevoEmailParams): Promise<{ messag
       subject: params.subject,
       htmlContent: params.htmlContent,
       textContent: params.textContent,
-      from: params.from || { email: 'invites@mylittleproject.app', name: 'MyLittleProject' },
+      sender: params.from || { email: BREVO_SENDER_EMAIL, name: BREVO_SENDER_NAME },
     }),
   });
 

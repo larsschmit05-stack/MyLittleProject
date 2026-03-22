@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import NodePalette from "./NodePalette";
 import CanvasArea from "./CanvasArea";
 import PropertiesPanel from "./PropertiesPanel";
@@ -16,8 +17,11 @@ import ComparisonView from './ComparisonView';
 import { useFloatingPanel } from "../../hooks/useFloatingPanel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import useFlowStore from '../../store/useFlowStore';
+import { useModelAccess } from '../../hooks/useModelAccess';
+import useModelAccessStore from '../../store/useModelAccessStore';
 
 export default function EditorLayout() {
+  const router = useRouter();
   const {
     isFloating,
     snapshot,
@@ -27,6 +31,29 @@ export default function EditorLayout() {
     saveAndClose,
   } = useFloatingPanel();
   const isDesktop = useMediaQuery("(min-width: 768px)");
+
+  const savedModelId = useFlowStore(s => s.savedModelId);
+  const { canEdit, role, isLoading } = useModelAccess(savedModelId);
+  const readOnly = !canEdit;
+
+  // Re-check access on tab focus to detect revocation
+  const fetchUserAccess = useModelAccessStore(s => s.fetchUserAccess);
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible' && savedModelId) {
+        fetchUserAccess(savedModelId);
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [savedModelId, fetchUserAccess]);
+
+  // Redirect if access revoked
+  useEffect(() => {
+    if (savedModelId && !isLoading && role === null) {
+      router.push('/dashboard');
+    }
+  }, [savedModelId, isLoading, role, router]);
 
   const scenarios = useFlowStore(s => s.scenarios);
   const activeScenarioId = useFlowStore(s => s.activeScenarioId);
@@ -67,7 +94,7 @@ export default function EditorLayout() {
   }
 
   function handleNewScenario() {
-    if (renamingScenarioId !== null) return;
+    if (renamingScenarioId !== null || readOnly) return;
     duplicateActiveScenario('New Scenario');
     const newScenario = useFlowStore.getState().scenarios.at(-1)!;
     switchScenario(newScenario.id);
@@ -175,6 +202,7 @@ export default function EditorLayout() {
         onExport={handleExport}
         isExporting={isExporting}
         isMobile={!isDesktop}
+        readOnly={readOnly}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -189,7 +217,7 @@ export default function EditorLayout() {
             flexDirection: "column",
           }}
         >
-          <NodePalette />
+          <NodePalette disabled={readOnly} />
         </aside>
 
         {/* Center — Canvas Area */}
@@ -200,7 +228,7 @@ export default function EditorLayout() {
             position: "relative",
           }}
         >
-          <CanvasArea />
+          <CanvasArea readOnly={readOnly} />
           {isFloating && (
             <FloatingParameterPanel
               onClose={closeFloating}
@@ -209,6 +237,7 @@ export default function EditorLayout() {
               isDirty={isDirty}
               snapshot={snapshot}
               isDesktop={isDesktop}
+              readOnly={readOnly}
             />
           )}
         </main>
@@ -224,7 +253,7 @@ export default function EditorLayout() {
             flexDirection: "column",
           }}
         >
-          <PropertiesPanel isFloating={isFloating} />
+          <PropertiesPanel isFloating={isFloating} readOnly={readOnly} />
         </aside>
       </div>
 

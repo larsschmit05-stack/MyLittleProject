@@ -15,6 +15,7 @@ interface FloatingParameterPanelProps {
   isDirty: boolean;
   snapshot: PanelSnapshot | null;
   isDesktop: boolean;
+  readOnly?: boolean;
 }
 
 // ─── Before / After Comparison ───────────────────────────────────────────────
@@ -161,6 +162,7 @@ export default function FloatingParameterPanel({
   isDirty,
   snapshot,
   isDesktop,
+  readOnly = false,
 }: FloatingParameterPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const selectedElement = useFlowStore((s) => s.selectedElement);
@@ -230,7 +232,10 @@ export default function FloatingParameterPanel({
         </div>
 
         {/* Parameter Controls */}
-        <div style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '16px', overflowY: 'auto', flex: 1, position: 'relative' }}>
+          {readOnly && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'all', cursor: 'not-allowed' }} />
+          )}
           <SelectionContent />
 
           {snapshot && (
@@ -242,30 +247,32 @@ export default function FloatingParameterPanel({
         </div>
 
         {/* Action Buttons */}
-        <div style={footerStyle}>
-          <button
-            onClick={onReset}
-            disabled={!isDirty}
-            style={{
-              ...secondaryButtonStyle,
-              opacity: isDirty ? 1 : 0.4,
-              cursor: isDirty ? 'pointer' : 'not-allowed',
-            }}
-          >
-            Reset
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!savedModelId}
-            style={{
-              ...primaryButtonStyle,
-              opacity: savedModelId ? 1 : 0.4,
-              cursor: savedModelId ? 'pointer' : 'not-allowed',
-            }}
-          >
-            Save Changes
-          </button>
-        </div>
+        {!readOnly && (
+          <div style={footerStyle}>
+            <button
+              onClick={onReset}
+              disabled={!isDirty}
+              style={{
+                ...secondaryButtonStyle,
+                opacity: isDirty ? 1 : 0.4,
+                cursor: isDirty ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Reset
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!savedModelId}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savedModelId ? 1 : 0.4,
+                cursor: savedModelId ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Save Changes
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
