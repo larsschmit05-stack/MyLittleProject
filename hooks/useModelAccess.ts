@@ -22,7 +22,7 @@ export function useModelAccess(modelId: string | null): UseModelAccessReturn {
     if (modelId && modelId !== currentModelId) {
       fetchUserAccess(modelId);
     }
-  }, [modelId, currentModelId, fetchUserAccess]);
+  }, [modelId, currentModelId]); // Don't depend on fetchUserAccess (function reference changes constantly)
 
   const role = currentUserRole;
 
