@@ -333,19 +333,15 @@ export async function revokeAccess(
   if (error) throw new Error(error.message);
 
   // Also revoke any pending/accepted invite_tokens for this user's email
-  const { data: accessRecords } = await client.rpc('get_model_access_list', {
-    p_model_id: modelId,
-  });
+  // Get user email from auth.users to ensure we find it even if model_access filters it out
+  const { data: { user }, error: authError } = await client.auth.admin.getUserById(targetUserId);
 
-  const userRecord = accessRecords?.find(
-    (r: { user_id: string }) => r.user_id === targetUserId
-  );
-  if (userRecord?.email) {
+  if (!authError && user?.email) {
     await client
       .from('invite_tokens')
       .update({ status: 'revoked' })
       .eq('model_id', modelId)
-      .eq('invited_email', userRecord.email.toLowerCase())
+      .eq('invited_email', user.email.toLowerCase())
       .in('status', ['pending', 'accepted']);
   }
 }
