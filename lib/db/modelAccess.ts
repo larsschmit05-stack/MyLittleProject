@@ -335,14 +335,24 @@ export async function revokeAccess(
     .eq('user_id', targetUserId);
   if (error) throw new Error(error.message);
 
-  // Revoke all pending/accepted invite tokens for this model
-  // These should already have been revoked by email in most cases, but this ensures cleanup
-  const { error: tokenError } = await client
-    .from('invite_tokens')
-    .update({ status: 'revoked' })
-    .eq('model_id', modelId)
-    .in('status', ['pending', 'accepted']);
-  if (tokenError) throw new Error(`Failed to revoke invite tokens: ${tokenError.message}`);
+  // Get the user's email to revoke their specific invite token
+  // We need to use a separate query to get the user's email since we only have user_id
+  const { data: { user }, error: authError } = await client.auth.admin.getUserById(targetUserId);
+
+  if (!authError && user?.email) {
+    // Revoke the specific invite token for this user's email
+    const { error: revokeError } = await client
+      .from('invite_tokens')
+      .update({ status: 'revoked' })
+      .eq('model_id', modelId)
+      .eq('invited_email', user.email.toLowerCase())
+      .in('status', ['pending', 'accepted']);
+
+    if (revokeError) {
+      // Log but don't throw - token revocation failure shouldn't block access revocation
+      console.warn(`Warning: Could not revoke invite token for ${user.email}:`, revokeError.message);
+    }
+  }
 }
 
 export async function cancelInviteByEmail(
