@@ -1,7 +1,7 @@
 'use client';
 
 import 'reactflow/dist/style.css';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -19,6 +19,7 @@ import ValidationModal from './ValidationModal';
 import { isValidConnection as checkConnection } from '../../lib/flow/validation';
 import useFlowStore from '../../store/useFlowStore';
 import { useCanvasInteractions, SNAP_GRID } from './useCanvasInteractions';
+import { useTouchpadNavigation } from './useTouchpadNavigation';
 
 const nodeTypes = {
   source: SourceNode,
@@ -30,7 +31,7 @@ const edgeTypes = {
   default: ScrapAwareEdge,
 };
 
-function FlowCanvas() {
+function FlowCanvas({ readOnly = false }: { readOnly?: boolean }) {
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
@@ -39,6 +40,10 @@ function FlowCanvas() {
   const graphStatus = useFlowStore((s) => s.validationResult);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const reactFlowInstance = useReactFlow();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Enable touchpad navigation
+  useTouchpadNavigation(containerRef);
 
   const {
     onNodeClick,
@@ -74,27 +79,32 @@ function FlowCanvas() {
         : graphStatus?.errors[0] ?? 'Drag nodes onto the canvas to begin';
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onNodesChange={readOnly ? undefined : onNodesChange}
+        onEdgesChange={readOnly ? undefined : onEdgesChange}
+        onConnect={readOnly ? undefined : onConnect}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        onDragOver={readOnly ? undefined : onDragOver}
+        onDrop={readOnly ? undefined : onDrop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         snapToGrid
         snapGrid={SNAP_GRID}
         fitView
-        deleteKeyCode={['Delete', 'Backspace']}
+        deleteKeyCode={readOnly ? [] : ['Delete', 'Backspace']}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
         autoPanOnNodeDrag={false}
         autoPanOnConnect={false}
         isValidConnection={handleIsValidConnection}
+        panOnDrag={true}
+        panOnScroll={true}
+        selectionOnDrag={false}
       >
         <Background
           variant={BackgroundVariant.Dots}
@@ -108,7 +118,7 @@ function FlowCanvas() {
             role={hasErrors ? 'button' : undefined}
             tabIndex={hasErrors ? 0 : undefined}
             onClick={hasErrors ? () => setShowValidationModal(true) : undefined}
-            onKeyDown={hasErrors ? (e) => { if (e.key === 'Enter') setShowValidationModal(true); } : undefined}
+            onKeyDown={hasErrors ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowValidationModal(true); } } : undefined}
             style={{
               padding: '10px 14px',
               borderRadius: '8px',
@@ -152,11 +162,11 @@ function FlowCanvas() {
   );
 }
 
-export default function CanvasArea() {
+export default function CanvasArea({ readOnly = false }: { readOnly?: boolean }) {
   return (
     <div style={{ flex: 1, height: '100%' }}>
       <ReactFlowProvider>
-        <FlowCanvas />
+        <FlowCanvas readOnly={readOnly} />
       </ReactFlowProvider>
     </div>
   );

@@ -175,7 +175,7 @@ describe('listModels', () => {
     const result = await listModels();
 
     expect(mockFrom).toHaveBeenCalledWith('models');
-    expect(mockSelect).toHaveBeenCalledWith('id, name, created_at, updated_at');
+    expect(mockSelect).toHaveBeenCalledWith('id, name, created_at, updated_at, user_id');
     expect(mockOrder).toHaveBeenCalledWith('updated_at', { ascending: false });
     expect(result).toEqual(rows);
   });

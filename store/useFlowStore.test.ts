@@ -39,6 +39,10 @@ const BASELINE_INITIAL = {
   savedModelName: '',
   isSaving: false,
   saveError: null as string | null,
+  savedSnapshots: {} as Record<string, SerializedModel>,
+  isSavingScenario: false,
+  scenarioSaveError: null as string | null,
+  pendingSwitchTarget: null as string | null,
 };
 
 beforeEach(() => {
@@ -191,17 +195,17 @@ describe('loadModel', () => {
 
   const loadedModel: SerializedModel = { nodes: [], edges: [], globalDemand: 200 };
 
-  it('clears canvas state before the fetch resolves', async () => {
+  it('preserves previous canvas while fetch is in-flight', async () => {
     // Arrange: fetch resolves after we can check intermediate state
     let resolveFetch!: (value: unknown) => void;
     mockFetchModel.mockReturnValue(new Promise((r) => { resolveFetch = r; }));
 
     const promise = useFlowStore.getState().loadModel('new-id');
 
-    // State should already be cleared (blank canvas, isSaving=true)
+    // Previous canvas should remain visible while loading
     const mid = useFlowStore.getState();
-    expect(mid.nodes).toHaveLength(0);
-    expect(mid.savedModelId).toBeNull();
+    expect(mid.nodes).toHaveLength(1);
+    expect(mid.savedModelId).toBe('old-id');
     expect(mid.isSaving).toBe(true);
 
     resolveFetch({ id: 'new-id', name: 'New', data: loadedModel });
@@ -220,15 +224,15 @@ describe('loadModel', () => {
     expect(s.isSaving).toBe(false);
   });
 
-  it('leaves canvas blank (not stale) when fetch fails', async () => {
+  it('preserves previous canvas when fetch fails', async () => {
     mockFetchModel.mockRejectedValue(new Error('network error'));
 
     await useFlowStore.getState().loadModel('bad-id');
 
     const s = useFlowStore.getState();
-    // Canvas must be blank — old model must NOT be present
-    expect(s.nodes).toHaveLength(0);
-    expect(s.savedModelId).toBeNull();
+    // Previous canvas should remain visible so user can recover
+    expect(s.nodes).toHaveLength(1);
+    expect(s.savedModelId).toBe('old-id');
     expect(s.isSaving).toBe(false);
     expect(s.saveError).toBe('network error');
   });
@@ -437,5 +441,169 @@ describe('scenario switch — V1.5 fields survive round-trip', () => {
 
     const node = useFlowStore.getState().nodes.find(n => n.id === 'src-1');
     expect((node?.data as SourceNodeData).outputMaterial).toBe('Raw Steel');
+  });
+});
+
+// ─── duplicateActiveScenario — snapshots ─────────────────────────────────────
+
+describe('duplicateActiveScenario — snapshots', () => {
+  it('creates a savedSnapshot for the new scenario', () => {
+    useFlowStore.getState().duplicateActiveScenario('Copy');
+    const newId = useFlowStore.getState().scenarios[1].id;
+    expect(useFlowStore.getState().savedSnapshots[newId]).toBeDefined();
+  });
+
+  it('snapshot matches the duplicated model', () => {
+    useFlowStore.getState().setGlobalDemand(42);
+    useFlowStore.getState().duplicateActiveScenario('Copy');
+    const newId = useFlowStore.getState().scenarios[1].id;
+    const snap = useFlowStore.getState().savedSnapshots[newId];
+    expect(snap.globalDemand).toBe(42);
+  });
+});
+
+// ─── requestSwitchScenario — guarded switch ──────────────────────────────────
+
+describe('requestSwitchScenario', () => {
+  it('switches immediately when no unsaved edits', () => {
+    // Set up baseline with a snapshot so hasUnsavedEdits returns false
+    useFlowStore.setState({
+      savedSnapshots: { baseline: { nodes: [], edges: [], globalDemand: 0 } },
+    });
+    useFlowStore.getState().duplicateActiveScenario('B');
+    const bId = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().requestSwitchScenario(bId);
+
+    expect(useFlowStore.getState().activeScenarioId).toBe(bId);
+    expect(useFlowStore.getState().pendingSwitchTarget).toBeNull();
+  });
+
+  it('sets pendingSwitchTarget when there are unsaved edits', () => {
+    // No snapshot for baseline → hasUnsavedEdits returns true
+    useFlowStore.getState().duplicateActiveScenario('B');
+    const bId = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().requestSwitchScenario(bId);
+
+    expect(useFlowStore.getState().activeScenarioId).toBe('baseline'); // did NOT switch
+    expect(useFlowStore.getState().pendingSwitchTarget).toBe(bId);
+  });
+
+  it('no-ops when target is already active', () => {
+    useFlowStore.getState().requestSwitchScenario('baseline');
+    expect(useFlowStore.getState().pendingSwitchTarget).toBeNull();
+  });
+});
+
+// ─── confirmSwitch / cancelSwitch ────────────────────────────────────────────
+
+describe('confirmSwitch', () => {
+  it('discard resets to saved state and switches', async () => {
+    // Create baseline snapshot, duplicate, switch to dup, edit, then request switch back
+    useFlowStore.setState({
+      savedSnapshots: { baseline: { nodes: [], edges: [], globalDemand: 0 } },
+    });
+    useFlowStore.getState().duplicateActiveScenario('B');
+    const bId = useFlowStore.getState().scenarios[1].id;
+    useFlowStore.getState().switchScenario(bId);
+    useFlowStore.getState().setGlobalDemand(999); // make dirty
+
+    useFlowStore.getState().requestSwitchScenario('baseline');
+    expect(useFlowStore.getState().pendingSwitchTarget).toBe('baseline');
+
+    await useFlowStore.getState().confirmSwitch('discard');
+
+    expect(useFlowStore.getState().activeScenarioId).toBe('baseline');
+    expect(useFlowStore.getState().pendingSwitchTarget).toBeNull();
+  });
+
+  it('discard on a never-DB-saved scenario reverts to duplication snapshot', async () => {
+    // Baseline has a snapshot so switching away is clean
+    useFlowStore.setState({
+      savedSnapshots: { baseline: { nodes: [], edges: [], globalDemand: 0 } },
+    });
+    // Duplicate and switch to new scenario
+    useFlowStore.getState().duplicateActiveScenario('New');
+    const newId = useFlowStore.getState().scenarios[1].id;
+    useFlowStore.getState().switchScenario(newId);
+
+    // Edit the new scenario
+    useFlowStore.getState().setGlobalDemand(777);
+
+    // Request switch back to baseline
+    useFlowStore.getState().requestSwitchScenario('baseline');
+
+    // Confirm discard
+    await useFlowStore.getState().confirmSwitch('discard');
+
+    // Switch back to the new scenario — should have reverted to duplication point (demand=0)
+    useFlowStore.getState().switchScenario(newId);
+    expect(useFlowStore.getState().globalDemand).toBe(0);
+  });
+});
+
+describe('cancelSwitch', () => {
+  it('clears pendingSwitchTarget without switching', () => {
+    useFlowStore.getState().duplicateActiveScenario('B');
+    const bId = useFlowStore.getState().scenarios[1].id;
+
+    // Force dirty
+    useFlowStore.getState().requestSwitchScenario(bId);
+    expect(useFlowStore.getState().pendingSwitchTarget).toBe(bId);
+
+    useFlowStore.getState().cancelSwitch();
+
+    expect(useFlowStore.getState().pendingSwitchTarget).toBeNull();
+    expect(useFlowStore.getState().activeScenarioId).toBe('baseline');
+  });
+});
+
+// ─── renameScenario ──────────────────────────────────────────────────────────
+
+describe('renameScenario', () => {
+  it('updates the scenario name in the array', () => {
+    useFlowStore.getState().duplicateActiveScenario('Old Name');
+    const id = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().renameScenario(id, 'New Name');
+
+    const renamed = useFlowStore.getState().scenarios.find(s => s.id === id);
+    expect(renamed?.name).toBe('New Name');
+  });
+
+  it('does not affect other scenarios', () => {
+    useFlowStore.getState().duplicateActiveScenario('Scenario B');
+    const id = useFlowStore.getState().scenarios[1].id;
+
+    useFlowStore.getState().renameScenario(id, 'Renamed B');
+
+    expect(useFlowStore.getState().scenarios[0].name).toBe('Baseline');
+  });
+});
+
+// ─── cancel-duplicate flow ───────────────────────────────────────────────────
+
+describe('cancel-duplicate flow', () => {
+  it('duplicate → switch → delete → back to original (1 scenario)', () => {
+    // Start with baseline
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+
+    // Duplicate
+    useFlowStore.getState().duplicateActiveScenario('Temp');
+    expect(useFlowStore.getState().scenarios).toHaveLength(2);
+    const tempId = useFlowStore.getState().scenarios[1].id;
+
+    // Switch to the new one
+    useFlowStore.getState().switchScenario(tempId);
+    expect(useFlowStore.getState().activeScenarioId).toBe(tempId);
+
+    // Delete it (simulates cancel)
+    useFlowStore.getState().deleteScenario(tempId);
+
+    // Should be back to 1 scenario and the original is active
+    expect(useFlowStore.getState().scenarios).toHaveLength(1);
+    expect(useFlowStore.getState().scenarios[0].name).toBe('Baseline');
+    expect(useFlowStore.getState().activeScenarioId).toBe('baseline');
   });
 });

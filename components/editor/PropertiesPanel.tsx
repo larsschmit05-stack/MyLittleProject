@@ -12,8 +12,8 @@ import {
   panelFieldGroupStyle,
   panelDividerStyle,
 } from './styles';
-import ScenarioManager from './ScenarioManager';
-import { classifyBottlenecks } from './nodes/processNodeStatus';
+import MetricsPanel from './MetricsPanel';
+
 
 
 // ─── Global Demand ────────────────────────────────────────────────────────────
@@ -551,143 +551,8 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
   );
 }
 
-// ─── Results Summary ──────────────────────────────────────────────────────────
-
-export function fmt(n: number): string {
-  return isFinite(n) ? n.toFixed(2) : 'N/A';
-}
-
-export function fmtPct(n: number): string {
-  return isFinite(n) ? (n * 100).toFixed(1) + '%' : 'N/A';
-}
-
-const resultRowStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  fontSize: '13px',
-  marginBottom: '6px',
-} as const;
-
-const resultLabelStyle = {
-  color: 'var(--color-text-secondary)',
-} as const;
-
-const resultValueStyle = {
-  fontWeight: 500,
-  color: 'var(--color-text-primary)',
-} as const;
-
-function ResultsSummary() {
-  const derivedResults = useFlowStore((s) => s.derivedResults);
-  const validationResult = useFlowStore((s) => s.validationResult);
-  const selectedElement = useFlowStore((s) => s.selectedElement);
-  const nodes = useFlowStore((s) => s.nodes);
-
-  const isEmpty =
-    !derivedResults ||
-    (derivedResults.systemThroughput === 0 &&
-      derivedResults.bottleneckNodeId === null &&
-      Object.keys(derivedResults.nodeResults).length === 0);
-
-  const selectedNodeResult =
-    selectedElement?.kind === 'node' && selectedElement.nodeType === 'process' && derivedResults
-      ? derivedResults.nodeResults[selectedElement.id] ?? null
-      : null;
-
-  const isInvalid = validationResult && !validationResult.isValid;
-
-  // Bottleneck classification for edge case messaging
-  const classification = classifyBottlenecks(nodes, derivedResults?.nodeResults ?? {});
-
-  const bottleneckNames = classification.bottleneckNodeIds.map((nid) => {
-    const node = nodes.find((n) => n.id === nid);
-    return (node?.data as ProcessNodeData)?.name ?? '—';
-  });
-
-  return (
-    <section>
-      <h2 style={panelSectionHeadingStyle}>Results</h2>
-      {nodes.length === 0 ? (
-        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-          Build a complete model to see results.
-        </p>
-      ) : isEmpty ? (
-        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-          Build a complete model to see results.
-        </p>
-      ) : (
-        <>
-          {isInvalid && (
-            <p style={{ fontSize: '12px', color: 'var(--color-warning)', marginBottom: '8px' }}>
-              Invalid parameters — results may not be realistic.
-            </p>
-          )}
-          <div style={resultRowStyle}>
-            <span style={resultLabelStyle}>System Throughput</span>
-            <span style={resultValueStyle}>{fmt(derivedResults!.systemThroughput)}</span>
-          </div>
-
-          {/* Bottleneck row — conditional on classification */}
-          {classification.status === 'balanced' ? (
-            <div style={resultRowStyle}>
-              <span style={resultLabelStyle}>Bottleneck</span>
-              <span style={{ ...resultValueStyle, color: 'var(--color-healthy)' }}>
-                System is balanced
-              </span>
-            </div>
-          ) : classification.status === 'multiple' ? (
-            <div style={resultRowStyle}>
-              <span style={resultLabelStyle}>Bottleneck</span>
-              <span style={resultValueStyle}>
-                Multiple: {bottleneckNames.join(', ')}
-              </span>
-            </div>
-          ) : classification.status === 'elevated' ? (
-            <div style={resultRowStyle}>
-              <span style={resultLabelStyle}>Bottleneck</span>
-              <span style={{ ...resultValueStyle, color: 'var(--color-warning)' }}>
-                No critical bottleneck (high utilization)
-              </span>
-            </div>
-          ) : (
-            <div style={resultRowStyle}>
-              <span style={resultLabelStyle}>Bottleneck</span>
-              <span style={resultValueStyle}>{bottleneckNames[0] ?? '—'}</span>
-            </div>
-          )}
-
-          {selectedNodeResult && (
-            <>
-              <p
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--color-text-label)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  margin: '10px 0 6px 0',
-                }}
-              >
-                Selected Node
-              </p>
-              <div style={resultRowStyle}>
-                <span style={resultLabelStyle}>Required Throughput</span>
-                <span style={resultValueStyle}>{fmt(selectedNodeResult.requiredThroughput)}</span>
-              </div>
-              <div style={resultRowStyle}>
-                <span style={resultLabelStyle}>Effective Capacity</span>
-                <span style={resultValueStyle}>{fmt(selectedNodeResult.effectiveCapacity)}</span>
-              </div>
-              <div style={resultRowStyle}>
-                <span style={resultLabelStyle}>Utilization</span>
-                <span style={resultValueStyle}>{fmtPct(selectedNodeResult.utilization)}</span>
-              </div>
-            </>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
+// Re-export fmt/fmtPct from shared module for backward compatibility
+export { fmt, fmtPct } from '../../lib/formatting';
 
 // ─── Selection Content ────────────────────────────────────────────────────────
 
@@ -731,21 +596,39 @@ export function SelectionContent() {
 
 interface PropertiesPanelProps {
   isFloating?: boolean;
+  readOnly?: boolean;
 }
 
-export default function PropertiesPanel({ isFloating }: PropertiesPanelProps) {
+export default function PropertiesPanel({ isFloating, readOnly = false }: PropertiesPanelProps) {
+  const nodes = useFlowStore((s) => s.nodes);
+  const derivedResults = useFlowStore((s) => s.derivedResults);
+  const validationResult = useFlowStore((s) => s.validationResult);
   const selectedElement = useFlowStore((s) => s.selectedElement);
   const isEditableNode =
     selectedElement?.kind === 'node' &&
     (selectedElement.nodeType === 'process' || selectedElement.nodeType === 'source');
 
   return (
-    <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
-      <ScenarioManager />
-      <hr style={panelDividerStyle} />
+    <div style={{ padding: '16px', height: '100%', overflowY: 'auto', position: 'relative' }}>
+      {readOnly && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 1,
+            pointerEvents: 'all',
+            cursor: 'not-allowed',
+          }}
+        />
+      )}
       <GlobalDemandSection />
       <hr style={panelDividerStyle} />
-      <ResultsSummary />
+      <MetricsPanel
+        nodes={nodes}
+        derivedResults={derivedResults}
+        validationResult={validationResult}
+        selectedElement={selectedElement}
+      />
       <hr style={panelDividerStyle} />
       {(isFloating || isEditableNode) ? (
         <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>

@@ -11,6 +11,9 @@ import {
 import { isValidConnection as checkConnection, validateGraph, ValidationResult } from '../lib/flow/validation';
 import { calculateFlowDAG } from '../utils/calculations';
 import { insertModel, updateModel, fetchModel } from '../lib/persistence';
+import { getScenarios as fetchScenariosFromDb, createScenario, updateScenario as updateScenarioInDb, deleteScenario as deleteScenarioInDb } from '../lib/db/scenarios';
+import type { ScenarioResults } from '../types/scenario';
+import { classifyBottlenecks } from '../components/editor/nodes/processNodeStatus';
 import type {
   FlowNode,
   FlowNodeType,
@@ -37,6 +40,16 @@ interface FlowState {
   savedModelName: string;
   isSaving: boolean;
   saveError: string | null;
+  /** Per-scenario snapshots keyed by scenario ID. Represents the last clean state (DB-persisted or duplication origin). */
+  savedSnapshots: Record<string, SerializedModel>;
+  /** IDs of scenarios that have been persisted to the DB (have a DB row). */
+  persistedScenarioIds: Set<string>;
+  isSavingScenario: boolean;
+  scenarioSaveError: string | null;
+  isDeletingScenario: boolean;
+  scenarioDeleteError: string | null;
+  /** Set when the user requests a switch while unsaved edits exist. UI reacts by showing a dialog. */
+  pendingSwitchTarget: string | null;
 }
 
 interface FlowActions {
@@ -53,11 +66,24 @@ interface FlowActions {
   getSerializedModel: () => SerializedModel;
   duplicateActiveScenario: (name: string) => void;
   switchScenario: (id: string) => void;
+  /** Guarded switch: checks for unsaved edits, sets pendingSwitchTarget if dirty, else switches immediately. */
+  requestSwitchScenario: (id: string) => void;
+  /** Completes a pending guarded switch after the user chose Save or Discard. */
+  confirmSwitch: (action: 'save' | 'discard') => Promise<void>;
+  /** Cancels a pending guarded switch (user chose Cancel). */
+  cancelSwitch: () => void;
   deleteScenario: (id: string) => void;
+  deleteScenarioFromDb: (id: string) => Promise<void>;
   saveAsNewModel: (name: string) => Promise<void>;
   updateSavedModel: () => Promise<void>;
   loadModel: (id: string) => Promise<void>;
   resetStore: () => void;
+  loadScenariosFromDb: (modelId: string) => Promise<void>;
+  saveScenarioToDb: () => Promise<void>;
+  renameScenario: (id: string, name: string) => void;
+  renameScenarioInDb: (id: string, name: string) => Promise<void>;
+  resetToSaved: () => void;
+  hasUnsavedEdits: () => boolean;
 }
 
 type FlowStore = FlowState & FlowActions;
@@ -149,6 +175,13 @@ const useFlowStore = create<FlowStore>((set, get) => {
     savedModelName: '',
     isSaving: false,
     saveError: null,
+    savedSnapshots: {},
+    persistedScenarioIds: new Set(),
+    isSavingScenario: false,
+    scenarioSaveError: null,
+    isDeletingScenario: false,
+    scenarioDeleteError: null,
+    pendingSwitchTarget: null,
 
     onNodesChange: (changes) => {
       const currentState = get();
@@ -329,7 +362,12 @@ const useFlowStore = create<FlowStore>((set, get) => {
     duplicateActiveScenario: (name) => {
       const model = get().getSerializedModel();
       const newScenario: Scenario = { id: crypto.randomUUID(), name, model };
-      set({ scenarios: [...get().scenarios, newScenario] });
+      // Snapshot the duplication origin so resetToSaved() can revert to it
+      const snapshot: SerializedModel = JSON.parse(JSON.stringify(model));
+      set({
+        scenarios: [...get().scenarios, newScenario],
+        savedSnapshots: { ...get().savedSnapshots, [newScenario.id]: snapshot },
+      });
     },
 
     switchScenario: (id) => {
@@ -350,6 +388,32 @@ const useFlowStore = create<FlowStore>((set, get) => {
       });
     },
 
+    requestSwitchScenario: (id) => {
+      if (id === get().activeScenarioId) return;
+      if (get().hasUnsavedEdits()) {
+        set({ pendingSwitchTarget: id });
+      } else {
+        get().switchScenario(id);
+      }
+    },
+
+    confirmSwitch: async (action) => {
+      const { pendingSwitchTarget } = get();
+      if (!pendingSwitchTarget) return;
+      if (action === 'save') {
+        await get().saveScenarioToDb();
+        if (get().scenarioSaveError) return; // Save failed — don't switch
+      } else {
+        get().resetToSaved();
+      }
+      get().switchScenario(pendingSwitchTarget);
+      set({ pendingSwitchTarget: null });
+    },
+
+    cancelSwitch: () => {
+      set({ pendingSwitchTarget: null });
+    },
+
     deleteScenario: (id) => {
       const { scenarios, activeScenarioId } = get();
       if (scenarios.length <= 1) return;
@@ -360,12 +424,102 @@ const useFlowStore = create<FlowStore>((set, get) => {
       set({ scenarios: get().scenarios.filter((s) => s.id !== id) });
     },
 
+    deleteScenarioFromDb: async (id) => {
+      const { scenarios, activeScenarioId, persistedScenarioIds } = get();
+
+      // Guard: cannot delete last scenario
+      if (scenarios.length <= 1) return;
+
+      // Guard: scenario must exist
+      const target = scenarios.find(s => s.id === id);
+      if (!target) return;
+
+      // Guard: don't delete while a save is in-flight (ID may change)
+      if (get().isSavingScenario) return;
+
+      // Use explicit persistence tracking — savedSnapshots includes duplication-origin
+      // snapshots for unsaved duplicates, so it's not a reliable persistence indicator.
+      const isPersisted = persistedScenarioIds.has(id);
+
+      set({ isDeletingScenario: true, scenarioDeleteError: null });
+
+      const wasActive = id === activeScenarioId;
+
+      // Capture full pre-deletion state for rollback on DB failure
+      const prevScenarios = get().scenarios;
+      const prevSnapshots = get().savedSnapshots;
+      const prevActiveId = get().activeScenarioId;
+      const prevNodes = get().nodes;
+      const prevEdges = get().edges;
+      const prevGlobalDemand = get().globalDemand;
+      const prevDerivedResults = get().derivedResults;
+      const prevValidationResult = get().validationResult;
+      const prevSelectedElement = get().selectedElement;
+
+      // If deleting the active scenario, switch to another first
+      if (wasActive) {
+        const remaining = scenarios.filter(s => s.id !== id);
+        get().switchScenario(remaining[0].id);
+      }
+
+      // Remove from memory + clean up snapshot + remove from persisted set
+      const newSnapshots = { ...get().savedSnapshots };
+      delete newSnapshots[id];
+      const newPersisted = new Set(get().persistedScenarioIds);
+      newPersisted.delete(id);
+      set({
+        scenarios: get().scenarios.filter(s => s.id !== id),
+        savedSnapshots: newSnapshots,
+        persistedScenarioIds: newPersisted,
+      });
+
+      // DB delete — only for persisted scenarios
+      if (isPersisted) {
+        try {
+          await deleteScenarioInDb(id);
+        } catch (err) {
+          // Full rollback: restore scenario, snapshots, and editor state
+          set({
+            scenarios: prevScenarios,
+            savedSnapshots: prevSnapshots,
+            persistedScenarioIds: persistedScenarioIds, // restore original set
+            scenarioDeleteError: (err as Error).message,
+          });
+          // If the deleted scenario was active, restore the full editor state
+          if (wasActive) {
+            set({
+              activeScenarioId: prevActiveId,
+              nodes: prevNodes,
+              edges: prevEdges,
+              globalDemand: prevGlobalDemand,
+              derivedResults: prevDerivedResults,
+              validationResult: prevValidationResult,
+              selectedElement: prevSelectedElement,
+            });
+          }
+        }
+      }
+
+      set({ isDeletingScenario: false });
+    },
+
     saveAsNewModel: async (name) => {
       set({ isSaving: true, saveError: null });
       try {
         const model = get().getSerializedModel();
-        const id = await insertModel(name, model);
-        set({ savedModelId: id, savedModelName: name, isSaving: false });
+        const modelId = await insertModel(name, model);
+        // Create baseline scenario row for the new model
+        const scenarioId = await createScenario({ model_id: modelId, name: 'Baseline', data: model });
+        const snapshot = JSON.parse(JSON.stringify(model));
+        set({
+          savedModelId: modelId,
+          savedModelName: name,
+          isSaving: false,
+          scenarios: [{ id: scenarioId, name: 'Baseline', model }],
+          activeScenarioId: scenarioId,
+          savedSnapshots: { [scenarioId]: snapshot },
+          persistedScenarioIds: new Set([scenarioId]),
+        });
       } catch (err) {
         set({ isSaving: false, saveError: (err as Error).message });
       }
@@ -398,25 +552,20 @@ const useFlowStore = create<FlowStore>((set, get) => {
         savedModelName: '',
         isSaving: false,
         saveError: null,
+        savedSnapshots: {},
+        persistedScenarioIds: new Set(),
+        isSavingScenario: false,
+        scenarioSaveError: null,
+        isDeletingScenario: false,
+        scenarioDeleteError: null,
+        pendingSwitchTarget: null,
       });
     },
 
     loadModel: async (id) => {
-      // Clear canvas immediately so stale state is never visible if load fails
-      set({
-        nodes: [],
-        edges: [],
-        selectedElement: null,
-        globalDemand: 0,
-        derivedResults: null,
-        validationResult: null,
-        savedModelId: null,
-        savedModelName: '',
-        scenarios: [{ id: BASELINE_ID, name: 'Baseline', model: BASELINE_MODEL }],
-        activeScenarioId: BASELINE_ID,
-        isSaving: true,
-        saveError: null,
-      });
+      // Only set loading flag — don't clear canvas until fetch succeeds,
+      // so the user keeps their current view if the network fails.
+      set({ isSaving: true, saveError: null });
       try {
         const row = await fetchModel(id);
         const model: SerializedModel = JSON.parse(JSON.stringify(row.data));
@@ -434,10 +583,188 @@ const useFlowStore = create<FlowStore>((set, get) => {
           isSaving: false,
           scenarios: [{ id: BASELINE_ID, name: 'Baseline', model }],
           activeScenarioId: BASELINE_ID,
+          savedSnapshots: { [BASELINE_ID]: JSON.parse(JSON.stringify(model)) },
+          persistedScenarioIds: new Set(),
+          isSavingScenario: false,
+          scenarioSaveError: null,
+          isDeletingScenario: false,
+          scenarioDeleteError: null,
+          pendingSwitchTarget: null,
         });
+        await get().loadScenariosFromDb(id);
       } catch (err) {
         set({ isSaving: false, saveError: (err as Error).message });
       }
+    },
+
+    loadScenariosFromDb: async (modelId) => {
+      try {
+        const dbScenarios = await fetchScenariosFromDb(modelId);
+        if (dbScenarios.length === 0) {
+          // Legacy model with no saved scenarios — create Baseline from current state
+          const model = get().getSerializedModel();
+          const newId = await createScenario({ model_id: modelId, name: 'Baseline', data: model });
+          set({
+            scenarios: [{ id: newId, name: 'Baseline', model }],
+            activeScenarioId: newId,
+            savedSnapshots: { [newId]: JSON.parse(JSON.stringify(model)) },
+            persistedScenarioIds: new Set([newId]),
+          });
+        } else {
+          const scenarios: Scenario[] = dbScenarios.map((s) => ({
+            id: s.id,
+            name: s.name,
+            model: s.data,
+          }));
+          // Build per-scenario saved snapshots from DB state
+          const snapshots: Record<string, SerializedModel> = {};
+          for (const s of dbScenarios) {
+            snapshots[s.id] = JSON.parse(JSON.stringify(s.data));
+          }
+          const firstModel: SerializedModel = JSON.parse(JSON.stringify(scenarios[0].model));
+          const nextNodes = firstModel.nodes.map((n) => ({ ...n })) as FlowNode[];
+          const nextEdges = firstModel.edges.map((e) => ({ ...e }));
+          // Results from DB are intentionally not loaded into derivedResults —
+          // we recompute from data so the active simulation is always fresh.
+          // The comparison view also recomputes from scenario.model on the fly.
+          set({
+            scenarios,
+            activeScenarioId: scenarios[0].id,
+            nodes: nextNodes,
+            edges: nextEdges,
+            globalDemand: firstModel.globalDemand,
+            derivedResults: calculateFlowDAG(firstModel),
+            validationResult: validateGraph(nextNodes, nextEdges),
+            savedSnapshots: snapshots,
+            persistedScenarioIds: new Set(dbScenarios.map(s => s.id)),
+          });
+        }
+      } catch {
+        // Scenario loading is non-fatal — the model is already on canvas
+      }
+    },
+
+    saveScenarioToDb: async () => {
+      const { activeScenarioId, savedModelId, savedSnapshots, nodes } = get();
+      if (!savedModelId) return;
+      set({ isSavingScenario: true, scenarioSaveError: null });
+      try {
+        const model = get().getSerializedModel();
+        const { derivedResults } = get();
+        // Use classifyBottlenecks for correct multi-bottleneck detection
+        const results: ScenarioResults | null = derivedResults
+          ? {
+              throughput: derivedResults.systemThroughput,
+              bottleneck_node_ids: classifyBottlenecks(nodes, derivedResults.nodeResults).bottleneckNodeIds,
+              utilization: Object.fromEntries(
+                Object.entries(derivedResults.nodeResults).map(([id, r]) => [
+                  id,
+                  Number.isFinite(r.utilization) ? r.utilization : null,
+                ])
+              ),
+            }
+          : null;
+        const isNewScenario = !get().persistedScenarioIds.has(activeScenarioId);
+        if (isNewScenario) {
+          // Scenario has no DB row yet — INSERT
+          const newId = await createScenario({ model_id: savedModelId, name: get().scenarios.find(s => s.id === activeScenarioId)?.name ?? 'Untitled', data: model, results });
+          // Update the in-memory scenario to use the DB-generated ID
+          const snapshot = JSON.parse(JSON.stringify(model));
+          const nextPersisted = new Set(get().persistedScenarioIds);
+          nextPersisted.add(newId);
+          set({
+            scenarios: get().scenarios.map(s => s.id === activeScenarioId ? { ...s, id: newId } : s),
+            activeScenarioId: newId,
+            savedSnapshots: { ...get().savedSnapshots, [newId]: snapshot },
+            persistedScenarioIds: nextPersisted,
+            isSavingScenario: false,
+          });
+        } else {
+          // Scenario exists in DB — UPDATE
+          await updateScenarioInDb(activeScenarioId, { data: model, results });
+          const snapshot = JSON.parse(JSON.stringify(model));
+          set({
+            isSavingScenario: false,
+            savedSnapshots: { ...get().savedSnapshots, [activeScenarioId]: snapshot },
+          });
+        }
+      } catch (err) {
+        set({ isSavingScenario: false, scenarioSaveError: (err as Error).message });
+      }
+    },
+
+    renameScenario: (id, name) => {
+      set({
+        scenarios: get().scenarios.map(s => s.id === id ? { ...s, name } : s),
+      });
+    },
+
+    renameScenarioInDb: async (id, name) => {
+      const prevName = get().scenarios.find(s => s.id === id)?.name;
+      if (prevName === undefined) return;
+
+      // Optimistic update
+      get().renameScenario(id, name);
+
+      // Persist to DB if the scenario is persisted
+      if (get().persistedScenarioIds.has(id)) {
+        try {
+          await updateScenarioInDb(id, { name });
+        } catch {
+          // Rollback on failure
+          get().renameScenario(id, prevName);
+        }
+      }
+    },
+
+    resetToSaved: () => {
+      const { savedSnapshots, activeScenarioId } = get();
+      const snapshot = savedSnapshots[activeScenarioId];
+      if (!snapshot) return;
+      const model: SerializedModel = JSON.parse(JSON.stringify(snapshot));
+      const nextNodes = model.nodes.map((n) => ({ ...n })) as FlowNode[];
+      const nextEdges = model.edges.map((e) => ({ ...e }));
+      set({
+        nodes: nextNodes,
+        edges: nextEdges,
+        globalDemand: model.globalDemand,
+        selectedElement: null,
+        derivedResults: calculateFlowDAG(model),
+        validationResult: validateGraph(nextNodes, nextEdges),
+      });
+      syncActiveScenario();
+    },
+
+    hasUnsavedEdits: () => {
+      const { savedSnapshots, activeScenarioId } = get();
+      const snapshot = savedSnapshots[activeScenarioId];
+      if (!snapshot) return true; // Never saved → always dirty
+
+      const current = get().getSerializedModel();
+
+      // Deep equality check: nodes, edges, globalDemand
+      if (current.globalDemand !== snapshot.globalDemand) return true;
+      if (current.nodes.length !== snapshot.nodes.length) return true;
+      if (current.edges.length !== snapshot.edges.length) return true;
+
+      // Check node changes (id, type, position, data)
+      for (let i = 0; i < current.nodes.length; i++) {
+        const cn = current.nodes[i];
+        const sn = snapshot.nodes[i];
+        if (cn.id !== sn.id || cn.type !== sn.type) return true;
+        if (JSON.stringify(cn.data) !== JSON.stringify(sn.data)) return true;
+        if (JSON.stringify(cn.position) !== JSON.stringify(sn.position)) return true;
+      }
+
+      // Check edge changes (id, source, target, data)
+      for (let i = 0; i < current.edges.length; i++) {
+        const ce = current.edges[i];
+        const se = snapshot.edges[i];
+        if (ce.id !== se.id || ce.source !== se.source || ce.target !== se.target) return true;
+        if (JSON.stringify(ce.data) !== JSON.stringify(se.data)) return true;
+      }
+
+      return false;
     },
   };
 });

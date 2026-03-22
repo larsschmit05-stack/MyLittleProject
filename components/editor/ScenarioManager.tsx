@@ -35,7 +35,7 @@ export default function ScenarioManager() {
   const activeScenarioId = useFlowStore((s) => s.activeScenarioId);
   const duplicateActiveScenario = useFlowStore((s) => s.duplicateActiveScenario);
   const switchScenario = useFlowStore((s) => s.switchScenario);
-  const deleteScenario = useFlowStore((s) => s.deleteScenario);
+  const deleteScenarioFromDb = useFlowStore((s) => s.deleteScenarioFromDb);
   const [newName, setNewName] = useState('');
 
   function handleDuplicate() {
@@ -85,7 +85,7 @@ export default function ScenarioManager() {
               {scenarios.length > 1 && (
                 <button
                   aria-label={`Delete scenario ${s.name}`}
-                  onClick={() => deleteScenario(s.id)}
+                  onClick={() => deleteScenarioFromDb(s.id)}
                   style={dangerBtn}
                 >
                   Delete

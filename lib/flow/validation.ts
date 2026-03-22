@@ -15,7 +15,8 @@ export type ValidationErrorCategory =
   | 'orphaned_node'
   | 'invalid_scrap_target'
   | 'missing_output_material'
-  | 'mixed_sink_inputs';
+  | 'mixed_sink_inputs'
+;
 
 export interface ValidationError {
   message: string;

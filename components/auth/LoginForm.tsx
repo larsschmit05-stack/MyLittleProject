@@ -53,7 +53,13 @@ export default function LoginForm() {
     const result = await login(email, password);
     setSubmitting(false);
     if (!result.error) {
-      router.push('/dashboard');
+      const redirect = sessionStorage.getItem('redirectAfterLogin');
+      if (redirect) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        router.push(redirect);
+      } else {
+        router.push('/dashboard');
+      }
     }
   }
 
