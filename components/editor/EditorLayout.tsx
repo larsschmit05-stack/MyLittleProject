@@ -14,6 +14,7 @@ import ScenarioContextMenu from './ScenarioContextMenu';
 import ConfirmDialog from './ConfirmDialog';
 import ComparisonSelectDialog from './ComparisonSelectDialog';
 import ComparisonView from './ComparisonView';
+import NewModelDialog from './NewModelDialog';
 import { useFloatingPanel } from "../../hooks/useFloatingPanel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import useFlowStore from '../../store/useFlowStore';
@@ -83,6 +84,7 @@ export default function EditorLayout() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [isCompareDialogOpen, setIsCompareDialogOpen] = useState(false);
+  const [showNewModelDialog, setShowNewModelDialog] = useState(!savedModelId);
   const [comparisonPair, setComparisonPair] = useState<{
     scenario1Id: string;
     scenario2Id: string;
@@ -331,6 +333,14 @@ export default function EditorLayout() {
           scenario1={comparisonScenario1}
           scenario2={comparisonScenario2}
           onClose={() => setComparisonPair(null)}
+        />
+      )}
+      {showNewModelDialog && (
+        <NewModelDialog
+          onCreated={(modelId) => {
+            setShowNewModelDialog(false);
+            router.replace(`/editor?id=${modelId}`);
+          }}
         />
       )}
     </div>
