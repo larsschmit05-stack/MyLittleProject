@@ -337,11 +337,12 @@ export async function revokeAccess(
 
   // Revoke all pending/accepted invite tokens for this model
   // These should already have been revoked by email in most cases, but this ensures cleanup
-  await client
+  const { error: tokenError } = await client
     .from('invite_tokens')
     .update({ status: 'revoked' })
     .eq('model_id', modelId)
     .in('status', ['pending', 'accepted']);
+  if (tokenError) throw new Error(`Failed to revoke invite tokens: ${tokenError.message}`);
 }
 
 export async function cancelInviteByEmail(
