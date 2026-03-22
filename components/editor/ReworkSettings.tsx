@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type { Edge, Node } from 'reactflow';
-import type { ProcessNodeData, EdgeData } from '../../types/flow';
+import type { ProcessNodeData, EdgeData, ReworkLoop } from '../../types/flow';
 import { isUpstreamAncestor } from '../../lib/flow/validation';
 import useFlowStore from '../../store/useFlowStore';
 import {
