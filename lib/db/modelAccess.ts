@@ -263,8 +263,33 @@ export async function getModelAccessList(
     }
   }
 
+  // Get accepted collaborators via SECURITY DEFINER RPC (accesses auth.users for emails)
+  const { data: accessRecords } = await client.rpc('get_model_access_list', {
+    p_model_id: modelId,
+  });
+
+  if (accessRecords) {
+    for (const rec of accessRecords as Array<{
+      access_id: string; user_id: string; email: string;
+      role: string; status: string; invited_at: string | null; accepted_at: string | null;
+    }>) {
+      // Skip revoked access records — they should not appear in the share modal
+      if (rec.status === 'revoked') continue;
+
+      items.push({
+        id: rec.access_id,
+        email: rec.email,
+        role: rec.role as AccessRole,
+        status: rec.status as AccessListItem['status'],
+        invitedAt: rec.invited_at,
+        acceptedAt: rec.accepted_at,
+        canRemove: true,
+        userId: rec.user_id,
+      });
+    }
+  }
+
   // Get pending invite_tokens for users who haven't signed up yet
-  // (This is the only data we can reliably get without auth.users access)
   const { data: pendingInvites } = await client
     .from('invite_tokens')
     .select('*')
