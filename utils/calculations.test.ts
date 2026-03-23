@@ -909,3 +909,215 @@ describe('calculateFlowDAG — all nodes at equal utilization', () => {
     expect(r.bottleneckNodeId).toBe('p');
   });
 });
+
+// ─── Route Split ─────────────────────────────────────────────────────────────
+
+describe('calculateFlowDAG — route split', () => {
+  it('distributes demand at sink by routeSplitPercent (50/30/20)', () => {
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'), makeSource('srcC'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pC', { throughputRate: 100, availableTime: 10 }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'srcC', target: 'pC' },
+        { id: 'e3', source: 'pA', target: 'snk', data: { routeSplitPercent: 50 } },
+        { id: 'e4', source: 'pB', target: 'snk', data: { routeSplitPercent: 30 } },
+        { id: 'e5', source: 'pC', target: 'snk', data: { routeSplitPercent: 20 } },
+      ],
+      globalDemand: 100000,
+    };
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(50000, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(30000, 1);
+    expect(r.nodeResults['pC'].requiredThroughput).toBeCloseTo(20000, 1);
+  });
+
+  it('distributes demand at merge node by routeSplitPercent (60/40) with yield', () => {
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('merge', { throughputRate: 100, availableTime: 10, yield: 90 }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'pA', target: 'merge', data: { routeSplitPercent: 60 } },
+        { id: 'e3', source: 'pB', target: 'merge', data: { routeSplitPercent: 40 } },
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // merge RT = 100, grossInputDemand = 100/0.9 ≈ 111.11
+    const grossInput = 100 / 0.9;
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(grossInput * 0.6, 2);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(grossInput * 0.4, 2);
+  });
+
+  it('without routeSplitPercent, falls back to flow-share distribution at sink', () => {
+    // Two parallel paths into sink, no routeSplitPercent → equal flow share
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'pA', target: 'snk' },
+        { id: 'e3', source: 'pB', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // Both sources have flowShare=1.0, sink flowShare=2.0 → each gets 50%
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(50, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(50, 1);
+  });
+
+  it('route split overrides flow-share at sink', () => {
+    // Same topology as above but with 70/30 route split
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'pA', target: 'snk', data: { routeSplitPercent: 70 } },
+        { id: 'e3', source: 'pB', target: 'snk', data: { routeSplitPercent: 30 } },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(70, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(30, 1);
+  });
+
+  it('zero demand with route split gives zero to all routes', () => {
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'pA', target: 'snk', data: { routeSplitPercent: 60 } },
+        { id: 'e3', source: 'pB', target: 'snk', data: { routeSplitPercent: 40 } },
+      ],
+      globalDemand: 0,
+    };
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['pA'].requiredThroughput).toBe(0);
+    expect(r.nodeResults['pB'].requiredThroughput).toBe(0);
+  });
+
+  it('route split correctly identifies bottleneck on constrained route', () => {
+    // pA has low capacity → high utilization on the 70% route
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 5, availableTime: 10 }), // EC=50
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }), // EC=1000
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'pA', target: 'snk', data: { routeSplitPercent: 70 } },
+        { id: 'e3', source: 'pB', target: 'snk', data: { routeSplitPercent: 30 } },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // pA.rt=70, pA.EC=50 → utilization=1.4 (bottleneck)
+    // pB.rt=30, pB.EC=1000 → utilization=0.03
+    expect(r.nodeResults['pA'].utilization).toBeCloseTo(1.4, 2);
+    expect(r.bottleneckNodeId).toBe('pA');
+    expect(r.systemThroughput).toBeLessThan(100);
+  });
+
+  it('mixed BOM + route split at merge node', () => {
+    // Merge has 3 inputs: pA+pB via route split (60/40), pC via BOM ratio (2)
+    // grossInputDemand = 100 (merge yield=100%)
+    // pC gets grossInput * bomRatio(2) = 200
+    // pA+pB group uses bomRatio from first edge (1): groupDemand = 100
+    // pA gets 100 * 0.6 = 60, pB gets 100 * 0.4 = 40
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'), makeSource('srcC'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pC', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('merge', {
+          throughputRate: 100, availableTime: 10,
+          bomRatios: { eA: 1, eB: 1, eC: 2 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'e2', source: 'srcC', target: 'pC' },
+        { id: 'eA', source: 'pA', target: 'merge', data: { routeSplitPercent: 60 } },
+        { id: 'eB', source: 'pB', target: 'merge', data: { routeSplitPercent: 40 } },
+        { id: 'eC', source: 'pC', target: 'merge' }, // BOM edge, no route split
+        { id: 'e6', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // pC: BOM ratio 2 → pC.rt = 100 * 2 = 200
+    expect(r.nodeResults['pC'].requiredThroughput).toBeCloseTo(200, 1);
+    // Route split group: BOM ratio from first edge (eA) = 1, groupDemand = 100
+    // pA: 100 * 0.6 = 60, pB: 100 * 0.4 = 40
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(60, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(40, 1);
+  });
+
+  it('incomplete route split group falls back to BOM ratios', () => {
+    // Only one edge has routeSplitPercent — group is incomplete, fall back to BOM
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'), makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('merge', {
+          throughputRate: 100, availableTime: 10,
+          bomRatios: { eA: 3, eB: 1 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'eA', source: 'pA', target: 'merge', data: { routeSplitPercent: 70 } },
+        { id: 'eB', source: 'pB', target: 'merge' }, // no routeSplitPercent
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // Not all edges have routeSplitPercent → falls back to BOM ratios
+    // pA.rt = 100 * 3 = 300, pB.rt = 100 * 1 = 100
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(300, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(100, 1);
+  });
+});

@@ -550,3 +550,124 @@ describe('validateGraph — mixed outputMaterial at Sink', () => {
     expect(result.categories).not.toContain('mixed_sink_inputs');
   });
 });
+
+// ─── Route Split validation ──────────────────────────────────────────────────
+
+describe('validateGraph — route split', () => {
+  it('accepts a valid route group summing to 100%', () => {
+    const nodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'),
+      { id: 'e2', source: 'p1', target: 'k', data: { routeSplitPercent: 60 } },
+      { id: 'e3', source: 'p2', target: 'k', data: { routeSplitPercent: 40 } },
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).not.toContain('invalid_route_split');
+  });
+
+  it('accepts route group within ±1% tolerance (101%)', () => {
+    const nodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'),
+      { id: 'e2', source: 'p1', target: 'k', data: { routeSplitPercent: 51 } },
+      { id: 'e3', source: 'p2', target: 'k', data: { routeSplitPercent: 50 } },
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).not.toContain('invalid_route_split');
+  });
+
+  it('rejects incomplete route group (one edge missing routeSplitPercent)', () => {
+    const nodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'),
+      { id: 'e2', source: 'p1', target: 'k', data: { routeSplitPercent: 60 } },
+      makeEdge('e3', 'p2', 'k'), // no routeSplitPercent
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).toContain('invalid_route_split');
+  });
+
+  it('rejects route group summing to 90% (below tolerance)', () => {
+    const nodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'),
+      { id: 'e2', source: 'p1', target: 'k', data: { routeSplitPercent: 50 } },
+      { id: 'e3', source: 'p2', target: 'k', data: { routeSplitPercent: 40 } },
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).toContain('invalid_route_split');
+  });
+
+  it('rejects route group summing to 102% (above tolerance)', () => {
+    const nodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'),
+      { id: 'e2', source: 'p1', target: 'k', data: { routeSplitPercent: 52 } },
+      { id: 'e3', source: 'p2', target: 'k', data: { routeSplitPercent: 50 } },
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).toContain('invalid_route_split');
+  });
+
+  it('rejects route group with zero value', () => {
+    const nodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'),
+      { id: 'e2', source: 'p1', target: 'k', data: { routeSplitPercent: 100 } },
+      { id: 'e3', source: 'p2', target: 'k', data: { routeSplitPercent: 0 } },
+    ];
+    const result = validateGraph(nodes, edges);
+    expect(result.categories).toContain('invalid_route_split');
+  });
+
+  it('accepts mixed BOM + route split on same merge node', () => {
+    // Merge has 3 inputs: 2 route-split edges (same material) + 1 BOM edge (different material)
+    const mergeData = {
+      name: 'Merge', throughputRate: 10, availableTime: 480,
+      yield: 100, numberOfResources: 1, conversionRatio: 1,
+      outputMaterial: 'Output',
+      bomRatios: { e2: 1, e3: 1, e4: 2 }, // BOM ratio for all inputs
+    } as ProcessNodeData;
+    const mergeNode: Node = { id: 'merge', type: 'process', position: { x: 0, y: 0 }, data: mergeData };
+    const allNodes = [
+      makeNode('s1', 'source'), makeNode('s2', 'source'), makeNode('s3', 'source'),
+      makeNode('p1', 'process', 'P1'), makeNode('p2', 'process', 'P2'),
+      makeNode('p3', 'process', 'P3'),
+      mergeNode, makeNode('k', 'sink'),
+    ];
+    const edges: Edge<EdgeData>[] = [
+      makeEdge('e0', 's1', 'p1'), makeEdge('e1', 's2', 'p2'), makeEdge('e5', 's3', 'p3'),
+      { id: 'e2', source: 'p1', target: 'merge', data: { routeSplitPercent: 60 } },
+      { id: 'e3', source: 'p2', target: 'merge', data: { routeSplitPercent: 40 } },
+      makeEdge('e4', 'p3', 'merge'), // BOM edge, no route split
+      makeEdge('e6', 'merge', 'k'),
+    ];
+    const result = validateGraph(allNodes, edges);
+    expect(result.categories).not.toContain('invalid_route_split');
+    expect(result.categories).not.toContain('missing_bom');
+  });
+});

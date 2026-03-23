@@ -63,7 +63,7 @@ Next.js App Router API routes. Key groups:
 - `components/editor/EditorLayout.tsx` — Main layout container
 - `components/editor/CanvasArea.tsx` — React Flow wrapper
 - `components/editor/nodes/` — Custom nodes: SourceNode, ProcessNode, SinkNode
-- `components/editor/edges/ScrapAwareEdge.tsx` — Custom edge with BOM ratios
+- `components/editor/edges/ScrapAwareEdge.tsx` — Custom edge with BOM ratios and route split labels
 - Flow calculations: `utils/calculations.ts` — see DAG Calculation Engine below
 - Flow validation: `lib/flow/validation.ts`
 - Bottleneck detection: `lib/flow/bottleneck.ts`
@@ -74,7 +74,7 @@ Next.js App Router API routes. Key groups:
 Two-pass algorithm in `calculateFlowDAG()`:
 
 1. **Forward pass** (source → sink): Computes `flowShare` per node — the fraction of total flow passing through it, accounting for split ratios on edges. Parallel branches each get flowShare=1.0.
-2. **Reverse pass** (sink → source): Propagates `requiredThroughput` backward from global demand. At merge nodes, incoming edges are grouped by material (`outputMaterial` of source node). Each material group applies its BOM ratio. Same-material edges from multiple suppliers are pooled and demand is distributed proportionally by flow share (not by capacity).
+2. **Reverse pass** (sink → source): Propagates `requiredThroughput` backward from global demand. At merge nodes, incoming edges use BOM ratios for demand distribution. Edges with `routeSplitPercent` form a route-split sub-group: their combined demand (using the first edge's BOM ratio) is distributed by fixed percentages. Non-route-split edges use standard BOM ratios. At sinks, route-split edges distribute by percentages; remaining edges use flow share.
 
 Key concepts:
 - **throughputRate**: Input processing rate per time unit (before yield loss). UI label: "Processing Rate".
@@ -82,9 +82,9 @@ Key concepts:
 - **Utilization**: `requiredThroughput / effectiveCapacity` — bottleneck is the node with highest utilization
 - **System throughput**: `globalDemand / maxUtilization` when constrained, `globalDemand` otherwise
 - **Time unit**: Model-level setting (minute/hour/day/week). Labels update dynamically. The calculation engine is unit-agnostic; consistency is the user's responsibility.
-- **conversionRatio**: Input units consumed per output unit. Examples: bottling 1.05, forging 5.0, assembly 1.0. See `lib/flow/conversionRatio.ts`.
+- **conversionRatio**: Input units consumed per output unit. Examples: bottling 1.05, forging 5.0, assembly 1.0.
 - **Scrap edges** (`edge.data.isScrap === true`) are excluded from topology and demand propagation
-- **Utilization thresholds** are centralized in `lib/flow/thresholds.ts` — all surfaces use `>=` for the bottleneck threshold (0.95)
+- **Route split** (`edge.data.routeSplitPercent`): Fixed percentage allocation on edges feeding the same target node. ≥2 edges with routeSplitPercent form a route group; values must sum to 100% ±1%. Can coexist with BOM edges on the same merge node. See `docs/FIXED_ROUTE_SPLIT_PRD.md`.
 
 ### Sharing & Permissions (V1.9)
 
@@ -223,51 +223,13 @@ Validate the new fields:
 
 ### Current State
 - **V1.9.1** complete: Time-unit support, infeasibility detection, bottleneck semantics
-- **V1.9.2** approved (minimal scope): OEE decomposition + work categories + capacity-aware routing (3–5 weeks)
-
-### V1.9.2 Specification
-See `docs/roadmap/V1.9.2_PRD.md` for the feature overview and `docs/roadmap/V1.9.2_IMPLEMENTATION.md` for the 3-run implementation plan.
-
-**Key features:**
-1. **Full OEE** — Availability, performance, quality as separate factors
-2. **Capacity-Aware Merge Allocation** — Route demand to suppliers based on available capacity
-3. **Work Categories** — Model 3–10 grouped demand streams (industry-agnostic: pharma, automotive, food, etc.)
-
-**Note:** Work Categories are **not pharmacy-specific**. They apply to any manufacturing process that needs to model multiple product types or demand profiles flowing through shared resources.
-
-### Reference: Pharmaceutical Dispensing Process
-
-Example that exercises V1.9.2 features:
-
-```
-INPUT: Patients/pharmacy → demand (Y zakjes/week)
-
-STAGE 1: Stock Processing (3 parallel routes based on capacity)
-├─ Auto Stripfoil — high-volume, long setup
-├─ Semi-auto — medium volume
-└─ Manual (Ompotten) — small volume, flexible
-OUTPUT: Pots with medicines
-
-STAGE 2: Production (9 Rowadose machines)
-├─ Fill sachets (2.4 pills/sachet per order)
-├─ OEE: Availability (uptime %), Performance (speed %), Quality (pass %)
-OUTPUT: Large roll of filled sachets
-
-STAGE 3: Inspection (5 Schouw machines)
-├─ Visual quality check + patient-specific cutting
-├─ OEE: same factors as production
-OUTPUT: Quality-checked, patient-ready rolls
-```
-
-**Features needed for this:**
-- **F7 (Full OEE)**: Explicit availability/performance/quality per machine stage
-- **F2 (Capacity-Aware Merge)**: Route batches to least-constrained stock method based on available capacity
-- **F1 (Work Categories)**: Group 1200 medicines into 3–10 families (bulk strips, small strips, pots)
+- **V1.9.2** complete: OEE decomposition + capacity-aware merge allocation (V1.9.2 docs archived in `docs/archive/v1.9/`)
+- **Fixed Route Split** implemented: Edge-based fixed percentage allocation for parallel routes. See `docs/FIXED_ROUTE_SPLIT_PRD.md`.
 
 ## Known Gotchas
 
 - **invite_tokens vs model_access**: The source of truth for current access is `model_access`, not `invite_tokens`. Token status can become stale if revocation partially fails. Always cross-check `model_access` when making access decisions.
 - **SECURITY DEFINER RPCs**: When operations need to access `auth.users` or bypass RLS, use existing RPCs rather than direct table queries. `auth.uid()` still works inside SECURITY DEFINER functions.
 - **Error handling on Supabase updates**: Always check `{ error }` from Supabase operations — silent failures (especially on invite_tokens updates) have caused bugs.
-- **bomRatios structure**: `ProcessNodeData.bomRatios` maps material name (string) → ratio. At merge nodes, incoming edges are grouped by the source node's `outputMaterial`. Each material group gets its BOM ratio applied during demand propagation (`calculations.ts:370`). Same-material edges from multiple suppliers share one BOM entry; demand is distributed proportionally by flow share. Legacy models that stored bomRatios keyed by edge ID are auto-migrated to material-name keys via `migrateBomRatios()` in `useFlowStore.ts`. Conflicting ratios during migration resolve to the higher value with a dismissible warning.
+- **bomRatios structure**: `ProcessNodeData.bomRatios` maps edge ID (string) → ratio. At merge nodes, each incoming edge gets `grossInputDemand * bomRatio` for demand propagation. Edges with `routeSplitPercent` form a sub-group that uses fixed percentage distribution instead (the first edge's BOM ratio applies as the group ratio).
 - **New model access**: `useModelAccess(modelId)` returns owner permissions when `modelId` is `null` (unsaved new model). Without this, new models would be read-only because `fetchUserAccess` never runs for null IDs. The `savedModelId` in `useFlowStore` is `null` until the first save to Supabase.

@@ -16,6 +16,7 @@ export type ValidationErrorCategory =
   | 'invalid_scrap_target'
   | 'missing_output_material'
   | 'mixed_sink_inputs'
+  | 'invalid_route_split'
 ;
 
 export interface ValidationError {
@@ -261,20 +262,57 @@ export function validateGraph(nodes: Node[], edges: Edge<EdgeData>[]): Validatio
   }
 
   // Merge nodes: process nodes with ≥2 incoming real edges must have valid bomRatios
+  // on non-route-split edges
   const processNodes = nodes.filter(n => n.type === 'process');
   for (const pNode of processNodes) {
     const incomingReal = realEdges.filter(e => e.target === pNode.id);
     if (incomingReal.length >= 2) {
       const data = pNode.data as ProcessNodeData;
       const bomRatios = data?.bomRatios;
-      const hasMissing = incomingReal.some(e => {
-        const ratio = bomRatios?.[e.id];
-        return ratio === undefined || ratio === null || ratio <= 0;
-      });
-      if (hasMissing) {
-        const name = data?.name ?? pNode.id;
-        addError(`Merge node "${name}" has missing or invalid BOM ratios`, 'missing_bom', [pNode.id]);
+      // Only check BOM ratios on edges that don't use route split
+      const bomEdges = incomingReal.filter(e => e.data?.routeSplitPercent == null);
+      if (bomEdges.length > 0) {
+        const hasMissing = bomEdges.some(e => {
+          const ratio = bomRatios?.[e.id];
+          return ratio === undefined || ratio === null || ratio <= 0;
+        });
+        if (hasMissing) {
+          const name = data?.name ?? pNode.id;
+          addError(`Merge node "${name}" has missing or invalid BOM ratios`, 'missing_bom', [pNode.id]);
+        }
       }
+    }
+  }
+
+  // Route split groups: validate route-split sub-groups per target node.
+  // A route-split group is the set of edges with routeSplitPercent into the same target.
+  // There must be ≥2 edges in the group, values must be >0, and they must sum to 100% ±1%.
+  // Edges without routeSplitPercent on the same target are fine (they use BOM ratios).
+  const allTargetIds = new Set(realEdges.map(e => e.target));
+  for (const targetId of allTargetIds) {
+    const incomingReal = realEdges.filter(e => e.target === targetId);
+    const edgesWithRouteSplit = incomingReal.filter(e => e.data?.routeSplitPercent != null);
+    if (edgesWithRouteSplit.length === 0) continue;
+
+    const targetNode = nodes.find(n => n.id === targetId);
+    const name = targetNode ? getNodeDisplayName(targetNode) : targetId;
+
+    // A single route-split edge is incomplete — need at least 2 to form a valid group
+    if (edgesWithRouteSplit.length === 1) {
+      addError(`Route group at "${name}" needs at least 2 route split edges`, 'invalid_route_split', [targetId]);
+      continue;
+    }
+
+    // Individual values must be > 0
+    const hasZeroOrNeg = edgesWithRouteSplit.some(e => (e.data?.routeSplitPercent ?? 0) <= 0);
+    if (hasZeroOrNeg) {
+      addError(`Route group at "${name}" has route split values that are zero or negative`, 'invalid_route_split', [targetId]);
+    }
+
+    // Sum must be 100% ± 1%
+    const sum = edgesWithRouteSplit.reduce((s, e) => s + (e.data?.routeSplitPercent ?? 0), 0);
+    if (sum < 99 || sum > 101) {
+      addError(`Route group at "${name}" has route splits summing to ${sum.toFixed(1)}%, expected 100% ± 1%`, 'invalid_route_split', [targetId]);
     }
   }
 

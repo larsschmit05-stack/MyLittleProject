@@ -454,6 +454,7 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
 
   // useState must be called unconditionally (rules of hooks)
   const [rawSplitRatio, setRawSplitRatio] = useState(String(edge?.data?.splitRatio ?? ''));
+  const [rawRouteSplit, setRawRouteSplit] = useState(String(edge?.data?.routeSplitPercent ?? ''));
 
   if (!edge) return null;
 
@@ -473,10 +474,28 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
   const sourceOutgoingCount = edges.filter((e) => e.source === edge.source).length;
   const showSplitRatio = sourceOutgoingCount >= 2;
 
+  // Route split: edges sharing the same target (non-scrap)
+  const targetIncoming = edges.filter(
+    (e) => e.target === edge.target && e.data?.isScrap !== true
+  );
+  const showRouteSplit = targetIncoming.length >= 2 && !edge.data?.isScrap;
+  const routeGroupTotal = targetIncoming.reduce(
+    (sum, e) => sum + (e.data?.routeSplitPercent ?? 0), 0
+  );
+  const routeGroupComplete = targetIncoming.every(
+    (e) => e.data?.routeSplitPercent != null && (e.data.routeSplitPercent ?? 0) > 0
+  );
+
   const isScrap = edge.data?.isScrap === true;
 
   function handleScrapToggle() {
-    updateEdgeData(edgeId, { isScrap: !isScrap });
+    const becomingScrap = !isScrap;
+    if (becomingScrap) {
+      updateEdgeData(edgeId, { isScrap: true, routeSplitPercent: undefined });
+      setRawRouteSplit('');
+    } else {
+      updateEdgeData(edgeId, { isScrap: false });
+    }
   }
 
   function handleSplitRatioChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -492,6 +511,28 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
     const n = parseFloat(rawSplitRatio);
     if (!isFinite(n) || n < 0 || n > 100) {
       setRawSplitRatio(String(edge!.data?.splitRatio ?? ''));
+    }
+  }
+
+  function handleRouteSplitChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const str = e.target.value;
+    setRawRouteSplit(str);
+    if (str === '') {
+      updateEdgeData(edgeId, { routeSplitPercent: undefined });
+      return;
+    }
+    const n = parseFloat(str);
+    if (isFinite(n) && n >= 0 && n <= 100) {
+      updateEdgeData(edgeId, { routeSplitPercent: n });
+    }
+  }
+
+  function handleRouteSplitBlur() {
+    const str = rawRouteSplit;
+    if (str === '') return;
+    const n = parseFloat(str);
+    if (!isFinite(n) || n < 0 || n > 100) {
+      setRawRouteSplit(String(edge!.data?.routeSplitPercent ?? ''));
     }
   }
 
@@ -545,6 +586,70 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
             onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
             onBlurCapture={(e) => (e.target.style.outline = 'none')}
           />
+        </div>
+      )}
+
+      {showRouteSplit && (
+        <div style={panelFieldGroupStyle}>
+          <label style={panelLabelStyle} htmlFor={`${edgeId}-routeSplit`}>
+            Route Split (%)
+          </label>
+          <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+            Fixed percentage of demand allocated to this route. All incoming routes to the same node must sum to 100%.
+          </p>
+          <input
+            id={`${edgeId}-routeSplit`}
+            type="number"
+            value={rawRouteSplit}
+            min={0}
+            max={100}
+            step={1}
+            onChange={handleRouteSplitChange}
+            onBlur={handleRouteSplitBlur}
+            style={panelInputStyle}
+            onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+            onBlurCapture={(e) => (e.target.style.outline = 'none')}
+          />
+
+          {/* Route group context */}
+          <div style={{ marginTop: '10px', fontSize: '12px' }}>
+            <p style={{ margin: '0 0 6px 0', fontWeight: 500, color: 'var(--color-text-label)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '11px' }}>
+              Route Group
+            </p>
+            {targetIncoming.map((e) => {
+              const srcNode = nodes.find((n) => n.id === e.source);
+              const srcName = srcNode
+                ? srcNode.type === 'process' ? (srcNode.data as ProcessNodeData).name
+                : (srcNode.data as SourceNodeData).label
+                : '?';
+              const val = e.data?.routeSplitPercent;
+              const isCurrent = e.id === edgeId;
+              return (
+                <div key={e.id} style={{
+                  display: 'flex', justifyContent: 'space-between', marginBottom: '2px',
+                  padding: '2px 4px', borderRadius: '2px',
+                  background: isCurrent ? 'var(--color-bg-hover, rgba(0,0,0,0.03))' : 'transparent',
+                  fontWeight: isCurrent ? 500 : 400,
+                  color: 'var(--color-text-secondary)',
+                }}>
+                  <span>{srcName} → {targetName}</span>
+                  <span>{val != null ? `${val}%` : '—'}</span>
+                </div>
+              );
+            })}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              marginTop: '4px', paddingTop: '4px',
+              borderTop: '1px solid var(--color-border)',
+              fontWeight: 500,
+              color: routeGroupComplete && routeGroupTotal >= 99 && routeGroupTotal <= 101
+                ? 'var(--color-healthy)'
+                : 'var(--color-warning)',
+            }}>
+              <span>Total</span>
+              <span>{routeGroupTotal.toFixed(0)}%</span>
+            </div>
+          </div>
         </div>
       )}
     </section>

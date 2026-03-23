@@ -328,11 +328,39 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
           pushDemand(inEdge.source, inEdge, rt);
         }
       } else {
-        const sinkShare = flowShare.get(nodeId) ?? 1.0;
-        for (const inEdge of incoming) {
-          const upShare = flowShare.get(inEdge.source) ?? 0;
-          const fraction = sinkShare > 0 ? upShare / sinkShare : 1 / incoming.length;
-          pushDemand(inEdge.source, inEdge, rt * fraction);
+        const routeSplitEdges = incoming.filter(e => e.data?.routeSplitPercent != null);
+        const useRouteSplit = routeSplitEdges.length >= 2;
+
+        if (useRouteSplit && routeSplitEdges.length === incoming.length) {
+          // All edges have route split — distribute entirely by percentages
+          for (const inEdge of incoming) {
+            const fraction = (inEdge.data!.routeSplitPercent!) / 100;
+            pushDemand(inEdge.source, inEdge, rt * fraction);
+          }
+        } else if (useRouteSplit) {
+          // Mixed: route-split sub-group + flow-share edges
+          const flowShareEdges = incoming.filter(e => e.data?.routeSplitPercent == null);
+          const routeSplitTotal = routeSplitEdges.reduce((s, e) => s + (e.data!.routeSplitPercent! / 100), 0);
+          for (const inEdge of routeSplitEdges) {
+            const fraction = (inEdge.data!.routeSplitPercent!) / 100;
+            pushDemand(inEdge.source, inEdge, rt * fraction);
+          }
+          // Remaining demand distributed by flow share among non-route-split edges
+          const remainingDemand = rt * (1 - routeSplitTotal);
+          const fsShareSum = flowShareEdges.reduce((s, e) => s + (flowShare.get(e.source) ?? 0), 0);
+          for (const inEdge of flowShareEdges) {
+            const upShare = flowShare.get(inEdge.source) ?? 0;
+            const fraction = fsShareSum > 0 ? upShare / fsShareSum : 1 / flowShareEdges.length;
+            pushDemand(inEdge.source, inEdge, remainingDemand * fraction);
+          }
+        } else {
+          // No valid route split group — use flow share for all
+          const sinkShare = flowShare.get(nodeId) ?? 1.0;
+          for (const inEdge of incoming) {
+            const upShare = flowShare.get(inEdge.source) ?? 0;
+            const fraction = sinkShare > 0 ? upShare / sinkShare : 1 / incoming.length;
+            pushDemand(inEdge.source, inEdge, rt * fraction);
+          }
         }
       }
     } else if (node.type === 'process') {
@@ -347,11 +375,30 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
         const demandToUpstream = grossInputDemand * data.conversionRatio;
         pushDemand(incoming[0].source, incoming[0], demandToUpstream);
       } else {
-        // Merge node: apply BOM ratios; conversionRatio is ignored
+        // Merge node: partition edges into route-split group (≥2 edges) and BOM group
         const bomRatios = data.bomRatios ?? {};
-        for (const inEdge of incoming) {
+        const routeSplitEdges = incoming.filter(e => e.data?.routeSplitPercent != null);
+        // Require ≥2 route-split edges for a valid group; otherwise treat all as BOM
+        const useRouteSplit = routeSplitEdges.length >= 2;
+        const bomEdges = useRouteSplit
+          ? incoming.filter(e => e.data?.routeSplitPercent == null)
+          : incoming;
+
+        // BOM edges: standard per-edge BOM ratio distribution
+        for (const inEdge of bomEdges) {
           const ratio = bomRatios[inEdge.id] ?? 1;
           pushDemand(inEdge.source, inEdge, grossInputDemand * ratio);
+        }
+
+        // Route-split edges: use BOM ratio from first edge as the group ratio,
+        // then distribute that share by fixed percentages
+        if (useRouteSplit) {
+          const groupBomRatio = bomRatios[routeSplitEdges[0].id] ?? 1;
+          const groupDemand = grossInputDemand * groupBomRatio;
+          for (const inEdge of routeSplitEdges) {
+            const fraction = (inEdge.data!.routeSplitPercent!) / 100;
+            pushDemand(inEdge.source, inEdge, groupDemand * fraction);
+          }
         }
       }
     }

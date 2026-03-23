@@ -3,6 +3,7 @@ import type { Node } from 'reactflow';
 export interface EdgeData {
   isScrap?: boolean;
   splitRatio?: number;
+  routeSplitPercent?: number;
 }
 
 export interface SourceNodeData {
