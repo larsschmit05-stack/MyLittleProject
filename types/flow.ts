@@ -20,10 +20,14 @@ export interface ProcessNodeData {
   throughputRate: number;
   availableTime: number;
   yield: number;
+  availabilityRate?: number;
+  performanceEfficiency?: number;
+  qualityRate?: number;
   numberOfResources: number;
   conversionRatio: number;
   bomRatios?: Record<string, number>;
   outputMaterial?: string;
+  capacityLimit?: number;
 }
 
 export type FlowSourceNode = Node<SourceNodeData, 'source'>;

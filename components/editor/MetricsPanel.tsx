@@ -88,6 +88,11 @@ export default function MetricsPanel({
       ? derivedResults.nodeResults[selectedElement.id] ?? null
       : null;
 
+  const selectedNodeData =
+    selectedElement?.kind === 'node' && selectedElement.nodeType === 'process'
+      ? (nodes.find((n) => n.id === selectedElement.id)?.data as ProcessNodeData | undefined) ?? null
+      : null;
+
   return (
     <section>
       <h2 style={panelSectionHeadingStyle}>Results</h2>
@@ -109,13 +114,6 @@ export default function MetricsPanel({
           <span style={resultLabelStyle}>Bottleneck</span>
           <span style={{ ...resultValueStyle, color: 'var(--color-healthy)' }}>
             System is balanced
-          </span>
-        </div>
-      ) : classification.status === 'multiple' ? (
-        <div style={resultRowStyle}>
-          <span style={resultLabelStyle}>Bottleneck</span>
-          <span style={resultValueStyle}>
-            Multiple: {bottleneckNames.join(', ')}
           </span>
         </div>
       ) : classification.status === 'elevated' ? (
@@ -215,6 +213,15 @@ export default function MetricsPanel({
             <span style={resultLabelStyle}>Effective Capacity</span>
             <span style={resultValueStyle}>{fmt(selectedNodeResult.effectiveCapacity)}</span>
           </div>
+          {selectedNodeData && (selectedNodeData.availabilityRate != null || selectedNodeData.performanceEfficiency != null || selectedNodeData.qualityRate != null) && (
+            <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '6px', paddingLeft: '4px' }}>
+              <span>A {selectedNodeData.availabilityRate ?? 100}%</span>
+              <span style={{ margin: '0 6px' }}>&middot;</span>
+              <span>P {selectedNodeData.performanceEfficiency ?? 100}%</span>
+              <span style={{ margin: '0 6px' }}>&middot;</span>
+              <span>Q {selectedNodeData.qualityRate ?? 100}%</span>
+            </div>
+          )}
           <div style={resultRowStyle}>
             <span style={resultLabelStyle}>Utilization</span>
             <span style={resultValueStyle}>{fmtPct(selectedNodeResult.utilization)}</span>

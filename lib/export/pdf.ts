@@ -162,15 +162,6 @@ export async function generateScenarioPdf(params: {
         statusText = `${bnName} at ${fmtPct(bnUtil)} (CRITICAL)`;
         break;
       }
-      case 'multiple': {
-        statusColor = COLOR_BOTTLENECK;
-        const names = classification.bottleneckNodeIds.map(id => {
-          const node = model.nodes.find(n => n.id === id);
-          return node?.type === 'process' ? (node.data as ProcessNodeData).name : id;
-        });
-        statusText = `Multiple: ${names.join(', ')} (CRITICAL)`;
-        break;
-      }
       case 'empty':
       default:
         statusColor = COLOR_TEXT_SEC;

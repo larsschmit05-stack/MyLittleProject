@@ -1,9 +1,8 @@
 // ─── Bottleneck Classification ───────────────────────────────────────────────
 
 export interface BottleneckClassification {
-  status: 'empty' | 'balanced' | 'elevated' | 'single' | 'multiple';
+  status: 'empty' | 'balanced' | 'elevated' | 'single';
   bottleneckNodeIds: string[];
-  totalBottlenecks: number;
 }
 
 const BOTTLENECK_THRESHOLD = 0.95;
@@ -22,15 +21,22 @@ export function classifyBottlenecks(
     .map((n) => n.id);
 
   if (processIds.length === 0) {
-    return { status: 'empty', bottleneckNodeIds: [], totalBottlenecks: 0 };
+    return { status: 'empty', bottleneckNodeIds: [] };
   }
 
-  // Collect bottleneck IDs in store order (deterministic)
-  const bottleneckIds = processIds.filter((id) =>
-    isAtBottleneckThreshold(nodeResults[id].utilization)
-  );
+  // Find the single node with the highest utilization that exceeds the threshold
+  let worstId: string | null = null;
+  let worstUtil = -Infinity;
 
-  if (bottleneckIds.length === 0) {
+  for (const id of processIds) {
+    const util = nodeResults[id].utilization;
+    if (isAtBottleneckThreshold(util) && (util > worstUtil || !isFinite(util))) {
+      worstUtil = util;
+      worstId = id;
+    }
+  }
+
+  if (worstId === null) {
     // No node hits threshold — determine if truly balanced or just elevated
     const utils = processIds.map((id) => nodeResults[id].utilization);
     const maxUtil = Math.max(...utils);
@@ -39,15 +45,14 @@ export function classifyBottlenecks(
 
     // Balanced: max utilization < 90% OR all nodes within 5% spread (tightly clustered)
     if (maxUtil < 0.90 || spread <= 0.05) {
-      return { status: 'balanced', bottleneckNodeIds: [], totalBottlenecks: 0 };
+      return { status: 'balanced', bottleneckNodeIds: [] };
     }
     // Nodes are elevated (e.g. 85%-92%) but none hit the >=95% bottleneck threshold
-    return { status: 'elevated', bottleneckNodeIds: [], totalBottlenecks: 0 };
+    return { status: 'elevated', bottleneckNodeIds: [] };
   }
 
   return {
-    status: bottleneckIds.length === 1 ? 'single' : 'multiple',
-    bottleneckNodeIds: bottleneckIds,
-    totalBottlenecks: bottleneckIds.length,
+    status: 'single',
+    bottleneckNodeIds: [worstId],
   };
 }

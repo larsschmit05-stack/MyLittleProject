@@ -37,8 +37,12 @@ type ProcessField =
   | 'throughputRate'
   | 'availableTime'
   | 'yield'
+  | 'availabilityRate'
+  | 'performanceEfficiency'
+  | 'qualityRate'
   | 'numberOfResources'
-  | 'conversionRatio';
+  | 'conversionRatio'
+  | 'capacityLimit';
 
 const VALID_CONNECTIONS: Record<NodeType, NodeType[]> = {
   source: ['process', 'sink'],
@@ -53,7 +57,12 @@ export function isProcessValueValid(field: ProcessField, value: number): boolean
     case 'availableTime':
       return value >= 0;
     case 'yield':
+    case 'availabilityRate':
+    case 'performanceEfficiency':
+    case 'qualityRate':
       return value > 0 && value <= 100;
+    case 'capacityLimit':
+      return value > 0;
     case 'numberOfResources':
       return value >= 1;
     case 'conversionRatio':

@@ -154,7 +154,7 @@ describe('generateScenarioPdf', () => {
     expect(textCalls.some((t: string) => typeof t === 'string' && t.includes('Assembly') && t.includes('CRITICAL'))).toBe(true);
   });
 
-  it('shows multiple bottleneck text', async () => {
+  it('shows single worst bottleneck when multiple nodes exceed threshold', async () => {
     const results = makeResults({
       nodeResults: {
         p1: { requiredThroughput: 950, effectiveCapacity: 980, utilization: 0.969 },
@@ -170,7 +170,9 @@ describe('generateScenarioPdf', () => {
     });
 
     const textCalls = mockText.mock.calls.map((c) => c[0] as string);
-    expect(textCalls.some((t: string) => typeof t === 'string' && t.includes('Multiple'))).toBe(true);
+    // Only the worst bottleneck (Assembly at 99%) should be shown, not "Multiple"
+    expect(textCalls.some((t: string) => typeof t === 'string' && t.includes('Assembly') && t.includes('CRITICAL'))).toBe(true);
+    expect(textCalls.some((t: string) => typeof t === 'string' && t.includes('Multiple'))).toBe(false);
   });
 
   it('shows balanced text when all utilization is low', async () => {

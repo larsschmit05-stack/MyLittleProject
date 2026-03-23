@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { yieldToFraction, calculateFlow, topologicalSort, calculateFlowDAG } from './calculations';
-import type { SerializedModel, SerializedNode, EdgeData } from '../types/flow';
+import { yieldToFraction, getOeeFraction, getQualityFraction, calculateFlow, topologicalSort, calculateFlowDAG } from './calculations';
+import type { SerializedModel, SerializedNode, EdgeData, ProcessNodeData } from '../types/flow';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -17,18 +17,28 @@ function makeProcess(id: string, overrides: Partial<{
   throughputRate: number;
   availableTime: number;
   yield: number;
+  availabilityRate: number;
+  performanceEfficiency: number;
+  qualityRate: number;
   numberOfResources: number;
   conversionRatio: number;
   bomRatios: Record<string, number>;
+  outputMaterial: string;
+  capacityLimit: number;
 }> = {}): SerializedNode {
-  const data = {
+  const data: ProcessNodeData = {
     name: overrides.name ?? 'Process',
     throughputRate: overrides.throughputRate ?? 1, // 1 unit/hour
     availableTime: overrides.availableTime ?? 8, // 8 hours
     yield: overrides.yield ?? 100,
     numberOfResources: overrides.numberOfResources ?? 1,
     conversionRatio: overrides.conversionRatio ?? 1,
+    ...(overrides.availabilityRate !== undefined ? { availabilityRate: overrides.availabilityRate } : {}),
+    ...(overrides.performanceEfficiency !== undefined ? { performanceEfficiency: overrides.performanceEfficiency } : {}),
+    ...(overrides.qualityRate !== undefined ? { qualityRate: overrides.qualityRate } : {}),
     ...(overrides.bomRatios !== undefined ? { bomRatios: overrides.bomRatios } : {}),
+    ...(overrides.outputMaterial !== undefined ? { outputMaterial: overrides.outputMaterial } : {}),
+    ...(overrides.capacityLimit !== undefined ? { capacityLimit: overrides.capacityLimit } : {}),
   };
   return { id, type: 'process', position: { x: 0, y: 0 }, data };
 }
@@ -1119,5 +1129,297 @@ describe('calculateFlowDAG — route split', () => {
     // pA.rt = 100 * 3 = 300, pB.rt = 100 * 1 = 100
     expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(300, 1);
     expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(100, 1);
+  });
+});
+
+// ─── OEE helpers ─────────────────────────────────────────────────────────────
+
+describe('getOeeFraction', () => {
+  it('should fall back to yield when no OEE fields are set', () => {
+    const data: ProcessNodeData = { name: 'P', throughputRate: 1, availableTime: 8, yield: 80, numberOfResources: 1, conversionRatio: 1 };
+    expect(getOeeFraction(data)).toBeCloseTo(0.8, 6);
+  });
+
+  it('should use OEE fields when any is set', () => {
+    const data: ProcessNodeData = { name: 'P', throughputRate: 1, availableTime: 8, yield: 80, availabilityRate: 90, performanceEfficiency: 80, qualityRate: 95, numberOfResources: 1, conversionRatio: 1 };
+    // 0.9 * 0.8 * 0.95 = 0.684
+    expect(getOeeFraction(data)).toBeCloseTo(0.684, 6);
+  });
+
+  it('should default missing OEE fields to 100', () => {
+    const data: ProcessNodeData = { name: 'P', throughputRate: 1, availableTime: 8, yield: 80, qualityRate: 90, numberOfResources: 1, conversionRatio: 1 };
+    // availability=100, performance=100, quality=90 → 1.0 * 1.0 * 0.9 = 0.9
+    expect(getOeeFraction(data)).toBeCloseTo(0.9, 6);
+  });
+
+  it('should return 0 when any OEE field is 0', () => {
+    const data: ProcessNodeData = { name: 'P', throughputRate: 1, availableTime: 8, yield: 100, availabilityRate: 0, performanceEfficiency: 100, qualityRate: 100, numberOfResources: 1, conversionRatio: 1 };
+    expect(getOeeFraction(data)).toBe(0);
+  });
+});
+
+describe('getQualityFraction', () => {
+  it('should fall back to yield when qualityRate is not set', () => {
+    const data: ProcessNodeData = { name: 'P', throughputRate: 1, availableTime: 8, yield: 90, numberOfResources: 1, conversionRatio: 1 };
+    expect(getQualityFraction(data)).toBeCloseTo(0.9, 6);
+  });
+
+  it('should use qualityRate when set', () => {
+    const data: ProcessNodeData = { name: 'P', throughputRate: 1, availableTime: 8, yield: 80, qualityRate: 95, numberOfResources: 1, conversionRatio: 1 };
+    expect(getQualityFraction(data)).toBeCloseTo(0.95, 6);
+  });
+});
+
+// ─── OEE in DAG calculations ────────────────────────────────────────────────
+
+describe('calculateFlowDAG — OEE', () => {
+  it('should compute effective capacity using OEE factors', () => {
+    // Source → Process → Sink
+    // Process: rate=10, time=8, resources=1, A=90%, P=80%, Q=95%
+    // EC = 10 * 8 * 1 * 0.9 * 0.8 * 0.95 = 54.72
+    const model = makeModel(
+      [
+        makeSource('src'),
+        makeProcess('p1', { throughputRate: 10, availableTime: 8, availabilityRate: 90, performanceEfficiency: 80, qualityRate: 95 }),
+        makeSink('snk'),
+      ],
+      [['src', 'p1'], ['p1', 'snk']],
+      100,
+    );
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['p1'].effectiveCapacity).toBeCloseTo(54.72, 2);
+  });
+
+  it('should produce identical results for legacy yield-only nodes', () => {
+    // Legacy node with yield=80 and no OEE fields
+    const legacyModel = makeModel(
+      [
+        makeSource('src'),
+        makeProcess('p1', { throughputRate: 10, availableTime: 8, yield: 80 }),
+        makeSink('snk'),
+      ],
+      [['src', 'p1'], ['p1', 'snk']],
+      50,
+    );
+    const r = calculateFlowDAG(legacyModel);
+    // EC = 10 * 8 * 1 * 0.8 = 64
+    expect(r.nodeResults['p1'].effectiveCapacity).toBeCloseTo(64, 2);
+    expect(r.nodeResults['p1'].requiredThroughput).toBeCloseTo(50, 2);
+  });
+
+  it('should use qualityRate (not availability/performance) for demand propagation', () => {
+    // Source → P1 → P2 → Sink
+    // P2 has qualityRate=50 (doubles input demand), but availability=50 should NOT affect demand
+    const model = makeModel(
+      [
+        makeSource('src'),
+        makeProcess('p1', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('p2', { throughputRate: 100, availableTime: 10, availabilityRate: 50, performanceEfficiency: 100, qualityRate: 50 }),
+        makeSink('snk'),
+      ],
+      [['src', 'p1'], ['p1', 'p2'], ['p2', 'snk']],
+      100,
+    );
+    const r = calculateFlowDAG(model);
+    // P2 rt = 100, P1 rt = 100 / 0.5 (qualityRate) * 1 (convRatio) = 200
+    expect(r.nodeResults['p2'].requiredThroughput).toBeCloseTo(100, 2);
+    expect(r.nodeResults['p1'].requiredThroughput).toBeCloseTo(200, 2);
+  });
+
+  it('should match yield=100 when all OEE factors are 100', () => {
+    const oeeModel = makeModel(
+      [
+        makeSource('src'),
+        makeProcess('p1', { throughputRate: 10, availableTime: 8, availabilityRate: 100, performanceEfficiency: 100, qualityRate: 100 }),
+        makeSink('snk'),
+      ],
+      [['src', 'p1'], ['p1', 'snk']],
+      50,
+    );
+    const legacyModel = makeModel(
+      [
+        makeSource('src'),
+        makeProcess('p1', { throughputRate: 10, availableTime: 8, yield: 100 }),
+        makeSink('snk'),
+      ],
+      [['src', 'p1'], ['p1', 'snk']],
+      50,
+    );
+    const oeeR = calculateFlowDAG(oeeModel);
+    const legacyR = calculateFlowDAG(legacyModel);
+    expect(oeeR.nodeResults['p1'].effectiveCapacity).toBe(legacyR.nodeResults['p1'].effectiveCapacity);
+    expect(oeeR.nodeResults['p1'].requiredThroughput).toBe(legacyR.nodeResults['p1'].requiredThroughput);
+    expect(oeeR.systemThroughput).toBe(legacyR.systemThroughput);
+  });
+
+  it('should produce EC=0 when availabilityRate is 0', () => {
+    const model = makeModel(
+      [
+        makeSource('src'),
+        makeProcess('p1', { throughputRate: 10, availableTime: 8, availabilityRate: 0, performanceEfficiency: 100, qualityRate: 100 }),
+        makeSink('snk'),
+      ],
+      [['src', 'p1'], ['p1', 'snk']],
+      50,
+    );
+    const r = calculateFlowDAG(model);
+    expect(r.nodeResults['p1'].effectiveCapacity).toBe(0);
+    expect(r.nodeResults['p1'].utilization).toBe(Infinity);
+  });
+});
+
+// ─── Capacity-Aware Merge Allocation ─────────────────────────────────────────
+
+describe('calculateFlowDAG — capacity-aware merge', () => {
+  it('should distribute demand proportionally to capacity limits', () => {
+    // srcA → pA (limit=300) ─┐
+    //                         ├→ merge → snk
+    // srcB → pB (limit=100) ─┘
+    // demand=100, pA gets 75%, pB gets 25%
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'),
+        makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10, capacityLimit: 300 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10, capacityLimit: 100 }),
+        makeProcess('merge', {
+          throughputRate: 100, availableTime: 10,
+          bomRatios: { eA: 1, eB: 1 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'eA', source: 'pA', target: 'merge' },
+        { id: 'eB', source: 'pB', target: 'merge' },
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // merge rt=100, grossInput=100, capacity: pA=300, pB=100, total=400
+    // pA gets 300/400 * 100 = 75, pB gets 100/400 * 100 = 25
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(75, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(25, 1);
+  });
+
+  it('should let unconstrained node absorb remaining demand', () => {
+    // srcA → pA (limit=30)  ─┐
+    //                         ├→ merge → snk
+    // srcB → pB (no limit)  ─┘
+    // demand=100, pA capped at 30, pB gets 70
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'),
+        makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10, capacityLimit: 30 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('merge', {
+          throughputRate: 100, availableTime: 10,
+          bomRatios: { eA: 1, eB: 1 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'eA', source: 'pA', target: 'merge' },
+        { id: 'eB', source: 'pB', target: 'merge' },
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // pA gets min(30, 100) = 30, pB gets remaining 70
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(30, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(70, 1);
+  });
+
+  it('should detect infeasibility when total capacity < demand', () => {
+    // Both nodes have small capacity limits, demand exceeds total
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'),
+        makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 10, availableTime: 1, capacityLimit: 20 }),
+        makeProcess('pB', { throughputRate: 10, availableTime: 1, capacityLimit: 30 }),
+        makeProcess('merge', {
+          throughputRate: 1000, availableTime: 10,
+          bomRatios: { eA: 1, eB: 1 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'eA', source: 'pA', target: 'merge' },
+        { id: 'eB', source: 'pB', target: 'merge' },
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // pA EC=10, pB EC=10. Demand distributed: pA=40, pB=60. Both over capacity → utilization > 1
+    const maxUtil = Math.max(r.nodeResults['pA'].utilization, r.nodeResults['pB'].utilization);
+    expect(maxUtil).toBeGreaterThan(1);
+  });
+
+  it('should use standard BOM allocation when no capacityLimit is set', () => {
+    // Same as existing merge test — no capacity limits, standard BOM behavior
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'),
+        makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10 }),
+        makeProcess('merge', {
+          throughputRate: 100, availableTime: 10,
+          bomRatios: { eA: 2, eB: 1 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'eA', source: 'pA', target: 'merge' },
+        { id: 'eB', source: 'pB', target: 'merge' },
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // No capacity limits → standard BOM: pA gets 100*2=200, pB gets 100*1=100
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(200, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(100, 1);
+  });
+
+  it('should let route-split take precedence over capacity limits', () => {
+    // Route-split edges should ignore capacity-aware logic
+    const model: SerializedModel = {
+      nodes: [
+        makeSource('srcA'),
+        makeSource('srcB'),
+        makeProcess('pA', { throughputRate: 100, availableTime: 10, capacityLimit: 300 }),
+        makeProcess('pB', { throughputRate: 100, availableTime: 10, capacityLimit: 100 }),
+        makeProcess('merge', {
+          throughputRate: 100, availableTime: 10,
+          bomRatios: { eA: 1, eB: 1 },
+        }),
+        makeSink('snk'),
+      ],
+      edges: [
+        { id: 'e0', source: 'srcA', target: 'pA' },
+        { id: 'e1', source: 'srcB', target: 'pB' },
+        { id: 'eA', source: 'pA', target: 'merge', data: { routeSplitPercent: 60 } },
+        { id: 'eB', source: 'pB', target: 'merge', data: { routeSplitPercent: 40 } },
+        { id: 'e4', source: 'merge', target: 'snk' },
+      ],
+      globalDemand: 100,
+    };
+    const r = calculateFlowDAG(model);
+    // Route-split: pA gets 60%, pB gets 40% (capacity limits ignored)
+    expect(r.nodeResults['pA'].requiredThroughput).toBeCloseTo(60, 1);
+    expect(r.nodeResults['pB'].requiredThroughput).toBeCloseTo(40, 1);
   });
 });

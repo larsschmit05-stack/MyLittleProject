@@ -6,6 +6,32 @@ export function yieldToFraction(yieldPercent: number): number {
   return yieldPercent / 100;
 }
 
+/**
+ * Returns the combined OEE fraction for effective capacity.
+ * If any OEE field is set, uses (availability × performance × quality) / 1,000,000.
+ * Otherwise falls back to legacy yield / 100.
+ */
+export function getOeeFraction(data: ProcessNodeData): number {
+  if (data.availabilityRate != null || data.performanceEfficiency != null || data.qualityRate != null) {
+    const a = (data.availabilityRate ?? 100) / 100;
+    const p = (data.performanceEfficiency ?? 100) / 100;
+    const q = (data.qualityRate ?? 100) / 100;
+    return a * p * q;
+  }
+  return yieldToFraction(data.yield);
+}
+
+/**
+ * Returns the quality fraction for demand propagation (gross input demand).
+ * Only quality losses consume extra input material — availability and performance do not.
+ */
+export function getQualityFraction(data: ProcessNodeData): number {
+  if (data.qualityRate != null) {
+    return data.qualityRate / 100;
+  }
+  return data.yield / 100;
+}
+
 const EMPTY_RESULT: FlowResult = {
   systemThroughput: 0,
   bottleneckNodeId: null,
@@ -84,18 +110,18 @@ function getOrderedProcessChain(model: SerializedModel): SerializedNode[] | null
 function computeEffectiveCapacity(data: ProcessNodeData): number {
   const throughputRate = data.throughputRate;
   const availHours = data.availableTime;
-  const yieldFrac = yieldToFraction(data.yield);
+  const oeeFrac = getOeeFraction(data);
 
   if (
     throughputRate <= 0 ||
     availHours <= 0 ||
-    yieldFrac <= 0 ||
+    oeeFrac <= 0 ||
     data.numberOfResources <= 0
   ) {
     return 0;
   }
 
-  return throughputRate * availHours * data.numberOfResources * yieldFrac;
+  return throughputRate * availHours * data.numberOfResources * oeeFrac;
 }
 
 export function calculateFlow(model: SerializedModel): FlowResult {
@@ -126,15 +152,15 @@ export function calculateFlow(model: SerializedModel): FlowResult {
 
     if (i > 0) {
       const data = chain[i].data as ProcessNodeData;
-      const yieldFrac = yieldToFraction(data.yield);
-      // requiredInput = requiredOutput / yieldFrac × conversionRatio
+      const qualityFrac = getQualityFraction(data);
+      // requiredInput = requiredOutput / qualityFrac × conversionRatio
       currentRequired =
-        yieldFrac > 0 ? (currentRequired / yieldFrac) * data.conversionRatio : Infinity;
+        qualityFrac > 0 ? (currentRequired / qualityFrac) * data.conversionRatio : Infinity;
     }
   }
 
   // 3. Normalize capacities to Sink output units
-  // normalizedEC[i] = EC[i] × ∏(yieldFrac[j] / conversionRatio[j]) for j from i+1 to n-1
+  // normalizedEC[i] = EC[i] × ∏(qualityFrac[j] / conversionRatio[j]) for j from i+1 to n-1
   const normalizedCapacities: number[] = new Array(n);
   let downstreamFactor = 1.0;
 
@@ -142,9 +168,9 @@ export function calculateFlow(model: SerializedModel): FlowResult {
     normalizedCapacities[i] = effectiveCapacities[i] * downstreamFactor;
 
     const data = chain[i].data as ProcessNodeData;
-    const yieldFrac = yieldToFraction(data.yield);
+    const qualityFrac = getQualityFraction(data);
     const convRatio = data.conversionRatio;
-    downstreamFactor = convRatio > 0 ? downstreamFactor * (yieldFrac / convRatio) : 0;
+    downstreamFactor = convRatio > 0 ? downstreamFactor * (qualityFrac / convRatio) : 0;
   }
 
   const systemThroughput = Math.min(...normalizedCapacities);
@@ -365,8 +391,8 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
       }
     } else if (node.type === 'process') {
       const data = node.data as ProcessNodeData;
-      const yieldFrac = data.yield / 100;
-      const grossInputDemand = yieldFrac > 0 ? rt / yieldFrac : rt > 0 ? Infinity : 0;
+      const qualityFrac = getQualityFraction(data);
+      const grossInputDemand = qualityFrac > 0 ? rt / qualityFrac : rt > 0 ? Infinity : 0;
 
       if (incoming.length === 0) {
         // No real upstream — nothing to propagate
@@ -384,10 +410,62 @@ export function calculateFlowDAG(model: SerializedModel): FlowResult {
           ? incoming.filter(e => e.data?.routeSplitPercent == null)
           : incoming;
 
-        // BOM edges: standard per-edge BOM ratio distribution
-        for (const inEdge of bomEdges) {
-          const ratio = bomRatios[inEdge.id] ?? 1;
-          pushDemand(inEdge.source, inEdge, grossInputDemand * ratio);
+        // Check if capacity-aware allocation applies to BOM edges:
+        // At least one upstream process node must have capacityLimit set
+        const hasCapacityLimit = bomEdges.some(e => {
+          const upNode = nodeMap.get(e.source);
+          return upNode?.type === 'process' && (upNode.data as ProcessNodeData).capacityLimit != null;
+        });
+
+        if (hasCapacityLimit && bomEdges.length >= 2) {
+          // Capacity-aware allocation: distribute demand proportionally to upstream capacity limits
+          const capacityEntries = bomEdges.map(e => {
+            const upNode = nodeMap.get(e.source);
+            const limit = upNode?.type === 'process'
+              ? (upNode.data as ProcessNodeData).capacityLimit
+              : undefined;
+            return { edge: e, capacity: limit ?? Infinity };
+          });
+
+          const finiteSum = capacityEntries.reduce((s, c) => s + (isFinite(c.capacity) ? c.capacity : 0), 0);
+          const infiniteEntries = capacityEntries.filter(c => !isFinite(c.capacity));
+          const finiteEntries = capacityEntries.filter(c => isFinite(c.capacity));
+
+          // Total demand to distribute (using first BOM ratio for the group if all ratios are 1, else per-edge)
+          // For capacity-aware: treat all BOM edges as carrying the same material, use ratio=1
+          const totalDemand = grossInputDemand;
+
+          if (finiteSum <= 0 && infiniteEntries.length === 0) {
+            // All zero capacity — push Infinity to signal infeasibility
+            for (const entry of capacityEntries) {
+              pushDemand(entry.edge.source, entry.edge, Infinity);
+            }
+          } else if (infiniteEntries.length > 0) {
+            // Assign finite-capacity nodes up to their limit, remainder to unconstrained
+            let allocated = 0;
+            for (const entry of finiteEntries) {
+              const share = Math.min(entry.capacity, totalDemand - allocated);
+              pushDemand(entry.edge.source, entry.edge, share);
+              allocated += share;
+            }
+            const remaining = totalDemand - allocated;
+            const perInfinite = infiniteEntries.length > 0 ? remaining / infiniteEntries.length : 0;
+            for (const entry of infiniteEntries) {
+              pushDemand(entry.edge.source, entry.edge, perInfinite);
+            }
+          } else {
+            // All finite: distribute proportionally to capacity
+            for (const entry of finiteEntries) {
+              const fraction = entry.capacity / finiteSum;
+              pushDemand(entry.edge.source, entry.edge, totalDemand * fraction);
+            }
+          }
+        } else {
+          // Standard BOM edges: per-edge BOM ratio distribution
+          for (const inEdge of bomEdges) {
+            const ratio = bomRatios[inEdge.id] ?? 1;
+            pushDemand(inEdge.source, inEdge, grossInputDemand * ratio);
+          }
         }
 
         // Route-split edges: use BOM ratio from first edge as the group ratio,

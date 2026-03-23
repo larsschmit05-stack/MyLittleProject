@@ -72,20 +72,24 @@ interface ProcessFormProps {
   data: ProcessNodeData;
 }
 
-type NumericField = 'throughputRate' | 'availableTime' | 'yield' | 'numberOfResources' | 'conversionRatio';
+type NumericField = 'throughputRate' | 'availableTime' | 'availabilityRate' | 'performanceEfficiency' | 'qualityRate' | 'numberOfResources' | 'conversionRatio';
 
 const FIELD_HELP_TEXT: Record<NumericField, string> = {
   throughputRate: 'Throughput Rate must be greater than 0.',
   availableTime: 'Available Time must be 0 or greater.',
-  yield: 'Yield must be greater than 0 and at most 100.',
+  availabilityRate: 'Availability Rate must be greater than 0 and at most 100.',
+  performanceEfficiency: 'Performance Efficiency must be greater than 0 and at most 100.',
+  qualityRate: 'Quality Rate must be greater than 0 and at most 100.',
   numberOfResources: 'Number of Resources must be at least 1.',
   conversionRatio: 'Conversion Ratio must be greater than 0.',
 };
 
 const NUMERIC_FIELDS: { key: NumericField; label: string }[] = [
-  { key: 'throughputRate', label: 'Throughput Rate (units/hr)' },
+  { key: 'throughputRate', label: 'Processing Rate (units/hr)' },
   { key: 'availableTime', label: 'Available Time (hours in the demand period)' },
-  { key: 'yield', label: 'Yield (%)' },
+  { key: 'availabilityRate', label: 'Availability Rate (%)' },
+  { key: 'performanceEfficiency', label: 'Performance Efficiency (%)' },
+  { key: 'qualityRate', label: 'Quality Rate (%)' },
   { key: 'numberOfResources', label: 'Number of Resources' },
   { key: 'conversionRatio', label: 'Conversion Ratio (input units per output unit)' },
 ];
@@ -212,12 +216,16 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
   const [rawValues, setRawValues] = useState<Record<NumericField, string>>({
     throughputRate: String(data.throughputRate),
     availableTime: String(data.availableTime),
-    yield: String(data.yield),
+    availabilityRate: String(data.availabilityRate ?? 100),
+    performanceEfficiency: String(data.performanceEfficiency ?? 100),
+    qualityRate: String(data.qualityRate ?? data.yield ?? 100),
     numberOfResources: String(data.numberOfResources),
     conversionRatio: String(data.conversionRatio),
   });
   const [invalidFields, setInvalidFields] = useState<Partial<Record<NumericField, string>>>({});
   const [outputMaterial, setOutputMaterial] = useState(data.outputMaterial ?? '');
+  const [rawCapacityLimit, setRawCapacityLimit] = useState(data.capacityLimit != null ? String(data.capacityLimit) : '');
+  const [capacityLimitInvalid, setCapacityLimitInvalid] = useState(false);
 
   // Sync local state when data prop changes (e.g., after updateNodeData recalculates results)
   useEffect(() => {
@@ -226,11 +234,15 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
     setRawValues({
       throughputRate: String(data.throughputRate),
       availableTime: String(data.availableTime),
-      yield: String(data.yield),
+      availabilityRate: String(data.availabilityRate ?? 100),
+      performanceEfficiency: String(data.performanceEfficiency ?? 100),
+      qualityRate: String(data.qualityRate ?? data.yield ?? 100),
       numberOfResources: String(data.numberOfResources),
       conversionRatio: String(data.conversionRatio),
     });
     setOutputMaterial(data.outputMaterial ?? '');
+    setRawCapacityLimit(data.capacityLimit != null ? String(data.capacityLimit) : '');
+    setCapacityLimitInvalid(false);
   }, [data]);
 
   // Check if this is a merge node (2+ incoming real edges)
@@ -290,6 +302,30 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
     const value = e.target.value;
     setOutputMaterial(value);
     updateNodeData(nodeId, { outputMaterial: value });
+  }
+
+  function handleCapacityLimitChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const str = e.target.value;
+    setRawCapacityLimit(str);
+    if (str === '') {
+      setCapacityLimitInvalid(false);
+      updateNodeData(nodeId, { capacityLimit: undefined });
+      return;
+    }
+    const n = parseFloat(str);
+    if (isFinite(n) && n > 0) {
+      setCapacityLimitInvalid(false);
+      updateNodeData(nodeId, { capacityLimit: n });
+    } else {
+      setCapacityLimitInvalid(true);
+    }
+  }
+
+  function handleCapacityLimitBlur() {
+    if (capacityLimitInvalid) {
+      setRawCapacityLimit(data.capacityLimit != null ? String(data.capacityLimit) : '');
+      setCapacityLimitInvalid(false);
+    }
   }
 
   return (
@@ -372,6 +408,31 @@ function ProcessForm({ nodeId, data }: ProcessFormProps) {
           onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
           onBlur={(e) => (e.target.style.outline = 'none')}
         />
+      </div>
+
+      <div style={{ ...panelFieldGroupStyle, marginTop: '16px' }}>
+        <label style={panelLabelStyle} htmlFor={`${nodeId}-capacityLimit`}>
+          Capacity Limit (units/period)
+        </label>
+        <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+          Optional. Limits how much demand this node can handle in capacity-aware merge allocation.
+        </p>
+        <input
+          id={`${nodeId}-capacityLimit`}
+          type="number"
+          value={rawCapacityLimit}
+          onChange={handleCapacityLimitChange}
+          onBlur={handleCapacityLimitBlur}
+          style={capacityLimitInvalid ? panelInvalidInputStyle : panelInputStyle}
+          placeholder="No limit"
+          onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
+          onBlurCapture={(e) => (e.target.style.outline = 'none')}
+        />
+        {capacityLimitInvalid && (
+          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--color-bottleneck)' }}>
+            Capacity Limit must be greater than 0.
+          </p>
+        )}
       </div>
     </section>
   );

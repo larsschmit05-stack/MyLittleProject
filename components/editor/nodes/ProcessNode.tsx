@@ -47,9 +47,6 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
   // Bottleneck classification (single source of truth)
   const classification = classifyBottlenecks(nodes, allNodeResults);
   const showBottleneckBadge = classification.bottleneckNodeIds.includes(id);
-  const bottleneckIndex = showBottleneckBadge
-    ? classification.bottleneckNodeIds.indexOf(id) + 1
-    : 0;
 
   const border =
     selected
@@ -195,7 +192,7 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
         <div
           className={`bottleneck-badge${nodeHovered || selected ? ' paused' : ''}`}
           tabIndex={0}
-          aria-label={`Bottleneck ${bottleneckIndex} of ${classification.totalBottlenecks}`}
+          aria-label="Bottleneck"
           style={{
             position: 'absolute',
             top: '-20px',
@@ -212,9 +209,7 @@ export default function ProcessNode({ id, data, selected }: NodeProps<ProcessNod
             borderRadius: '2px',
           }}
         >
-          Bottleneck{classification.totalBottlenecks > 1
-            ? ` (${bottleneckIndex}/${classification.totalBottlenecks})`
-            : ''}
+          Bottleneck
         </div>
       )}
       <Handle type="target" position={Position.Left} />

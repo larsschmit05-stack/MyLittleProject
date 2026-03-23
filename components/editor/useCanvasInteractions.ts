@@ -69,7 +69,7 @@ export function useCanvasInteractions() {
           id: nodeId,
           type: 'process',
           position: snappedPosition,
-          data: { name: 'Process', throughputRate: 1, availableTime: 8, yield: 100, numberOfResources: 1, conversionRatio: 1 },
+          data: { name: 'Process', throughputRate: 1, availableTime: 8, yield: 100, availabilityRate: 100, performanceEfficiency: 100, qualityRate: 100, numberOfResources: 1, conversionRatio: 1 },
         };
       } else if (nodeType === 'source') {
         newNode = {

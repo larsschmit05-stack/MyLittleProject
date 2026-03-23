@@ -143,9 +143,9 @@ describe('MetricsPanel', () => {
     expect(screen.getByText('System is balanced')).toBeDefined();
   });
 
-  it('shows "Multiple:" with both names for multiple bottlenecks', () => {
+  it('shows only the single worst bottleneck when multiple nodes exceed threshold', () => {
     const nodes = [processNode('p1', 'Assembly'), processNode('p2', 'QC')];
-    // Both at 100% — multiple bottlenecks
+    // Both at 100% — only the first one (by store order) with highest util is shown
     const results = makeResults({ p1: 1.0, p2: 1.0 }, 42);
     render(
       <MetricsPanel
@@ -155,7 +155,11 @@ describe('MetricsPanel', () => {
         selectedElement={null}
       />
     );
-    expect(screen.getByText(/Multiple:.*Assembly.*QC|Multiple:.*QC.*Assembly/)).toBeDefined();
+    // Should show a single bottleneck name, not "Multiple:"
+    expect(screen.queryByText(/Multiple:/)).toBeNull();
+    // The bottleneck row should show a single name (first in store order with highest util)
+    const bottleneckRow = screen.getByText('Bottleneck').closest('div');
+    expect(bottleneckRow?.textContent).toMatch(/Assembly|QC/);
   });
 
   it('shows elevated status message', () => {
