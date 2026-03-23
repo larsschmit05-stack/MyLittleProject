@@ -16,6 +16,29 @@ export default function ScrapAwareEdge({
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   const isScrap = data?.isScrap === true;
   const routeSplit = data?.routeSplitPercent;
+  const splitRatio = data?.splitRatio;
+
+  const hasRouteSplit = routeSplit != null && !isScrap;
+  const hasSplitRatio = splitRatio != null && !isScrap;
+  const hasBoth = hasRouteSplit && hasSplitRatio;
+
+  // When both labels exist, offset toward source (split) and target (route split)
+  const splitLabelX = hasBoth ? sourceX + (labelX - sourceX) * 0.5 : labelX;
+  const splitLabelY = hasBoth ? sourceY + (labelY - sourceY) * 0.5 : labelY;
+  const routeLabelX = hasBoth ? targetX + (labelX - targetX) * 0.5 : labelX;
+  const routeLabelY = hasBoth ? targetY + (labelY - targetY) * 0.5 : labelY;
+
+  const labelStyle = {
+    position: 'absolute' as const,
+    pointerEvents: 'none' as const,
+    fontSize: '10px',
+    fontWeight: 600,
+    color: 'var(--color-text-secondary)',
+    background: 'var(--color-bg-primary)',
+    padding: '1px 4px',
+    borderRadius: '3px',
+    border: '1px solid var(--color-border)',
+  };
 
   return (
     <>
@@ -48,24 +71,28 @@ export default function ScrapAwareEdge({
           }}
         />
       </g>
-      {routeSplit != null && !isScrap && (
+      {(hasSplitRatio || hasRouteSplit) && (
         <EdgeLabelRenderer>
-          <div
-            style={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              pointerEvents: 'none',
-              fontSize: '10px',
-              fontWeight: 600,
-              color: 'var(--color-text-secondary)',
-              background: 'var(--color-bg-primary)',
-              padding: '1px 4px',
-              borderRadius: '3px',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            {routeSplit}%
-          </div>
+          {hasSplitRatio && (
+            <div
+              style={{
+                ...labelStyle,
+                transform: `translate(-50%, -50%) translate(${splitLabelX}px, ${splitLabelY}px)`,
+              }}
+            >
+              {splitRatio}%
+            </div>
+          )}
+          {hasRouteSplit && (
+            <div
+              style={{
+                ...labelStyle,
+                transform: `translate(-50%, -50%) translate(${routeLabelX}px, ${routeLabelY}px)`,
+              }}
+            >
+              {routeSplit}%
+            </div>
+          )}
         </EdgeLabelRenderer>
       )}
     </>

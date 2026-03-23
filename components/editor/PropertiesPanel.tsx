@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import useFlowStore from '../../store/useFlowStore';
-import type { ProcessNodeData, SourceNodeData } from '../../types/flow';
+import type { ProcessNodeData, SourceNodeData, SinkNodeData } from '../../types/flow';
 import { isProcessValueValid } from '../../lib/flow/validation';
 import {
   panelLabelStyle,
@@ -530,14 +530,25 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
     if (!node) return '?';
     if (node.type === 'process') return (node.data as ProcessNodeData).name;
     if (node.type === 'source') return (node.data as SourceNodeData).label;
+    if (node.type === 'sink') return (node.data as SinkNodeData).label;
     return node.type ?? '?';
   }
 
   const sourceName = getNodeName(sourceNode);
   const targetName = getNodeName(targetNode);
 
+  // Split group: edges sharing the same source (non-scrap)
+  const sourceOutgoing = edges.filter(
+    (e) => e.source === edge.source && e.data?.isScrap !== true
+  );
   const sourceOutgoingCount = edges.filter((e) => e.source === edge.source).length;
   const showSplitRatio = sourceOutgoingCount >= 2;
+  const splitGroupTotal = sourceOutgoing.reduce(
+    (sum, e) => sum + (e.data?.splitRatio ?? 0), 0
+  );
+  const splitGroupComplete = sourceOutgoing.every(
+    (e) => e.data?.splitRatio != null && (e.data.splitRatio ?? 0) > 0
+  );
 
   // Route split: edges sharing the same target (non-scrap)
   const targetIncoming = edges.filter(
@@ -651,6 +662,43 @@ function EdgeForm({ edgeId }: { edgeId: string }) {
             onFocus={(e) => (e.target.style.outline = '2px solid var(--color-action)')}
             onBlurCapture={(e) => (e.target.style.outline = 'none')}
           />
+
+          {/* Split group context */}
+          <div style={{ marginTop: '10px', fontSize: '12px' }}>
+            <p style={{ margin: '0 0 6px 0', fontWeight: 500, color: 'var(--color-text-label)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '11px' }}>
+              Split Group
+            </p>
+            {sourceOutgoing.map((e) => {
+              const tgtNode = nodes.find((n) => n.id === e.target);
+              const tgtName = getNodeName(tgtNode);
+              const val = e.data?.splitRatio;
+              const isCurrent = e.id === edgeId;
+              return (
+                <div key={e.id} style={{
+                  display: 'flex', justifyContent: 'space-between', marginBottom: '2px',
+                  padding: '2px 4px', borderRadius: '2px',
+                  background: isCurrent ? 'var(--color-bg-hover, rgba(0,0,0,0.03))' : 'transparent',
+                  fontWeight: isCurrent ? 500 : 400,
+                  color: 'var(--color-text-secondary)',
+                }}>
+                  <span>{sourceName} → {tgtName}</span>
+                  <span>{val != null ? `${val}%` : '—'}</span>
+                </div>
+              );
+            })}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              marginTop: '4px', paddingTop: '4px',
+              borderTop: '1px solid var(--color-border)',
+              fontWeight: 500,
+              color: splitGroupComplete && splitGroupTotal >= 99 && splitGroupTotal <= 101
+                ? 'var(--color-healthy)'
+                : 'var(--color-warning)',
+            }}>
+              <span>Total</span>
+              <span>{splitGroupTotal.toFixed(0)}%</span>
+            </div>
+          </div>
         </div>
       )}
 
