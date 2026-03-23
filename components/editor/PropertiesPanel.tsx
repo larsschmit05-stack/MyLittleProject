@@ -96,6 +96,10 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
   const edges = useFlowStore((s) => s.edges);
   const nodes = useFlowStore((s) => s.nodes);
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
+  const storeBomRatios = useFlowStore((s) => {
+    const node = s.nodes.find((n) => n.id === nodeId);
+    return (node?.data as ProcessNodeData)?.bomRatios;
+  });
 
   const incomingReal = edges.filter((e) => e.target === nodeId && !e.data?.isScrap);
   const incomingEdgeIds = incomingReal.map((e) => e.id).sort().join(',');
@@ -109,16 +113,16 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
   useEffect(() => {
     if (incomingReal.length < 2) return;
 
-    const missingEdges = incomingReal.filter((e) => !data.bomRatios?.[e.id]);
+    const missingEdges = incomingReal.filter((e) => !storeBomRatios?.[e.id]);
     if (missingEdges.length > 0) {
-      const initialized: Record<string, number> = { ...(data.bomRatios ?? {}) };
+      const initialized: Record<string, number> = { ...(storeBomRatios ?? {}) };
       missingEdges.forEach((e) => {
         initialized[e.id] = 1;
       });
       updateNodeData(nodeId, { bomRatios: initialized });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- incomingEdgeIds already captures the same signal as incomingReal (derived from it); adding incomingReal would cause infinite loops
-  }, [nodeId, incomingEdgeIds, data.bomRatios, updateNodeData]);
+  }, [nodeId, incomingEdgeIds, storeBomRatios, updateNodeData]);
 
   if (incomingReal.length < 2) return null;
 
@@ -131,7 +135,7 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
         next.delete(edgeId);
         return next;
       });
-      updateNodeData(nodeId, { bomRatios: { ...data.bomRatios, [edgeId]: n } });
+      updateNodeData(nodeId, { bomRatios: { ...storeBomRatios, [edgeId]: n } });
     } else {
       setInvalidEdges((prev) => new Set(prev).add(edgeId));
     }
@@ -139,7 +143,7 @@ function BomSection({ nodeId, data }: { nodeId: string; data: ProcessNodeData })
 
   function handleBlur(edgeId: string) {
     if (invalidEdges.has(edgeId)) {
-      setRawValues((prev) => ({ ...prev, [edgeId]: String(data.bomRatios?.[edgeId] ?? 1) }));
+      setRawValues((prev) => ({ ...prev, [edgeId]: String(storeBomRatios?.[edgeId] ?? 1) }));
       setInvalidEdges((prev) => {
         const next = new Set(prev);
         next.delete(edgeId);
